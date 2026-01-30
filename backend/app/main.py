@@ -4,7 +4,7 @@ from flasgger import Swagger
 from app.config import Config
 from app.db import db
 from app.services.hash_chain import create_genesis_block
-from app.routes import register, chain
+from app.routes import register, chain, auth
 
 
 def create_app():
@@ -21,6 +21,7 @@ def create_app():
 
     app.register_blueprint(register.bp)
     app.register_blueprint(chain.bp)
+    app.register_blueprint(auth.bp)
 
     return app
 
