@@ -35,3 +35,13 @@ class OTPSession(db.Model):
 
     def is_valid(self):
         return not self.is_used and self.expires_at > datetime.utcnow()
+
+
+class Biometric(db.Model):
+    __tablename__ = "biometrics"
+
+    id = db.Column(db.Integer, primary_key=True)
+    voter_id = db.Column(db.UUID(as_uuid=True), nullable=False, index=True)
+    face_embedding = db.Column(db.Text, nullable=False)
+    liveness_score = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
