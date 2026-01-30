@@ -12,7 +12,6 @@ def create_app():
     app.config.from_object(Config)
 
     CORS(app)
-    Swagger(app)
     db.init_app(app)
 
     with app.app_context():
@@ -22,6 +21,10 @@ def create_app():
     app.register_blueprint(register.bp)
     app.register_blueprint(chain.bp)
     app.register_blueprint(auth.bp)
+
+    # Initialize Swagger after blueprints are registered so Flasgger
+    # discovers docstrings on blueprint endpoints (ensures /api/auth/* appear)
+    Swagger(app)
 
     return app
 
