@@ -4,7 +4,14 @@ import uuid
 import numpy as np
 from flask import Blueprint, request, jsonify
 from PIL import Image
-import cv2
+
+# face_recognition relies on dlib and cmake at build time; ensure it's available
+try:
+    import face_recognition
+except ImportError as ie:
+    raise RuntimeError("face_recognition library is required for accurate EAR detection. "
+                       "Install via pip ensuring cmake and dlib are present.") from ie
+
 from app.db import db
 from app.models import Biometric
 from app.services.liveness import detect_blink
@@ -22,64 +29,21 @@ def load_image_from_bytes(image_bytes):
 
 def extract_eye_landmarks(image_array):
     """
-    Extract eye landmarks from image using OpenCV cascade classifiers.
+    Obtain exact eyelid landmarks via face_recognition.
     
-    Returns (left_eye, right_eye) as (6, 2) numpy arrays or None if detection fails.
+    Returns (left_eye, right_eye) as numpy arrays or None on failure.
     """
-    try:
-        face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
-        eye_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_eye.xml"
-        )
-        
-        gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-        
-        if len(faces) == 0:
-            return None
-        
-        x, y, w, h = faces[0]
-        roi_gray = gray[y : y + h, x : x + w]
-        eyes = eye_cascade.detectMultiScale(roi_gray)
-        
-        if len(eyes) < 2:
-            return None
-        
-        eye1 = eyes[0]
-        eye2 = eyes[1] if len(eyes) > 1 else eyes[0]
-        
-        ex1, ey1, ew1, eh1 = eye1
-        ex2, ey2, ew2, eh2 = eye2
-        
-        left_eye = np.array([
-            [ex1, ey1],
-            [ex1 + ew1 * 0.25, ey1],
-            [ex1 + ew1 * 0.5, ey1 + eh1 * 0.3],
-            [ex1 + ew1, ey1],
-            [ex1 + ew1 * 0.5, ey1 + eh1 * 0.8],
-            [ex1 + ew1 * 0.75, ey1],
-        ], dtype=np.float32)
-        
-        right_eye = np.array([
-            [ex2, ey2],
-            [ex2 + ew2 * 0.25, ey2],
-            [ex2 + ew2 * 0.5, ey2 + eh2 * 0.3],
-            [ex2 + ew2, ey2],
-            [ex2 + ew2 * 0.5, ey2 + eh2 * 0.8],
-            [ex2 + ew2 * 0.75, ey2],
-        ], dtype=np.float32)
-        
-        return left_eye, right_eye
-    except Exception:
+    # face_recognition works with RGB numpy arrays directly
+    landmarks_list = face_recognition.face_landmarks(image_array)
+    if not landmarks_list:
         return None
+    landmarks = landmarks_list[0]
+    left = landmarks.get("left_eye")
+    right = landmarks.get("right_eye")
+    if not left or not right:
+        return None
+    return np.array(left, dtype=np.float32), np.array(right, dtype=np.float32)
 
-
-def generate_face_embedding():
-    """Generate a placeholder normalized face embedding (128-D vector)."""
-    embedding = np.random.randn(128).astype(np.float32)
-    return embedding / np.linalg.norm(embedding)
 
 
 @bp.route("/selfie", methods=["POST"])
@@ -151,22 +115,26 @@ def selfie_liveness():
     
     try:
         image_bytes = image_file.read()
-        pil_image = load_image_from_bytes(image_bytes)
-        image_array = np.array(pil_image)
-        
-        landmarks = extract_eye_landmarks(image_array)
-        if landmarks is None:
+        # use face_recognition to load image for consistency
+        image = face_recognition.load_image_file(io.BytesIO(image_bytes))
+        image_array = np.array(image)
+
+        landmarks = face_recognition.face_landmarks(image_array)
+        if not landmarks:
             return jsonify(
-                {
-                    "liveness": "fail",
-                    "ear_score": 0.0,
-                    "message": "Could not detect face or eye landmarks",
-                }
+                {"liveness": "fail", "ear_score": 0.0, "message": "No face detected"}
             ), 400
-        
-        left_eye, right_eye = landmarks
-        blink_detected, ear_score = detect_blink(left_eye, right_eye)
-        
+        face_landmarks = landmarks[0]
+        left_eye = face_landmarks.get("left_eye")
+        right_eye = face_landmarks.get("right_eye")
+        if not left_eye or not right_eye:
+            return jsonify(
+                {"liveness": "fail", "ear_score": 0.0, "message": "Eye landmarks missing"}
+            ), 400
+
+        left_eye_arr = np.array(left_eye, dtype=np.float32)
+        right_eye_arr = np.array(right_eye, dtype=np.float32)
+        blink_detected, ear_score = detect_blink(left_eye_arr, right_eye_arr)
         if not blink_detected:
             return jsonify(
                 {
@@ -175,10 +143,16 @@ def selfie_liveness():
                     "message": "No blink detected; liveness verification failed",
                 }
             ), 400
-        
-        embedding = generate_face_embedding()
+
+        # embedding from face_recognition
+        encodings = face_recognition.face_encodings(image_array)
+        if not encodings:
+            return jsonify(
+                {"liveness": "fail", "ear_score": ear_score, "message": "Unable to compute embedding"}
+            ), 400
+        embedding = encodings[0]
         embedding_json = json.dumps(embedding.tolist())
-        
+
         biometric = Biometric(
             voter_id=uuid.UUID(voter_id_str),
             face_embedding=embedding_json,
@@ -186,7 +160,7 @@ def selfie_liveness():
         )
         db.session.add(biometric)
         db.session.commit()
-        
+
         return jsonify(
             {
                 "liveness": "pass",
