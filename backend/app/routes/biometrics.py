@@ -4,13 +4,22 @@ import uuid
 import numpy as np
 from flask import Blueprint, request, jsonify
 from PIL import Image
+import cv2
 
-# face_recognition relies on dlib and cmake at build time; ensure it's available
+# try to import mediapipe; if it's not available we'll revert to Haar cascades
+mp = None
+face_mesh = None
 try:
-    import face_recognition
-except ImportError as ie:
-    raise RuntimeError("face_recognition library is required for accurate EAR detection. "
-                       "Install via pip ensuring cmake and dlib are present.") from ie
+    import mediapipe as mp
+    # initialize MediaPipe face mesh once at module import for reuse
+    mp_face_mesh = mp.solutions.face_mesh
+    face_mesh = mp_face_mesh.FaceMesh(
+        static_image_mode=True,
+        max_num_faces=1,
+        refine_landmarks=True,
+    )
+except ImportError:
+    print("[WARNING] mediapipe not installed, falling back to Haar cascades")
 
 from app.db import db
 from app.models import Biometric
@@ -29,20 +38,67 @@ def load_image_from_bytes(image_bytes):
 
 def extract_eye_landmarks(image_array):
     """
-    Obtain exact eyelid landmarks via face_recognition.
-    
-    Returns (left_eye, right_eye) as numpy arrays or None on failure.
+    Extract eye contours; prefer MediaPipe Face Mesh if available,
+    otherwise fall back to Haar cascade bounding boxes.
     """
-    # face_recognition works with RGB numpy arrays directly
-    landmarks_list = face_recognition.face_landmarks(image_array)
-    if not landmarks_list:
+    if face_mesh is not None:
+        rgb = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        results = face_mesh.process(rgb)
+        if not results.multi_face_landmarks:
+            return None
+        landmarks = results.multi_face_landmarks[0].landmark
+        h, w, _ = image_array.shape
+        left_idx = [33, 160, 158, 133, 153, 144]
+        right_idx = [362, 385, 387, 263, 373, 380]
+        def coords(indices):
+            pts = []
+            for i in indices:
+                lm = landmarks[i]
+                x_px = int(lm.x * w)
+                y_px = int(lm.y * h)
+                pts.append([x_px, y_px])
+            return np.array(pts, dtype=np.float32)
+        return coords(left_idx), coords(right_idx)
+    # fallback to Haar cascades (same code as before)
+    try:
+        face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+        eye_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_eye.xml"
+        )
+        gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        if len(faces) == 0:
+            return None
+        x, y, w, h = faces[0]
+        roi_gray = gray[y : y + h, x : x + w]
+        eyes = eye_cascade.detectMultiScale(roi_gray)
+        if len(eyes) < 2:
+            return None
+        eye1 = eyes[0]
+        eye2 = eyes[1] if len(eyes) > 1 else eyes[0]
+        ex1, ey1, ew1, eh1 = eye1
+        ex2, ey2, ew2, eh2 = eye2
+        left_eye = np.array([
+            [ex1, ey1],
+            [ex1 + ew1 * 0.25, ey1],
+            [ex1 + ew1 * 0.5, ey1 + eh1 * 0.3],
+            [ex1 + ew1, ey1],
+            [ex1 + ew1 * 0.5, ey1 + eh1 * 0.8],
+            [ex1 + ew1 * 0.75, ey1],
+        ], dtype=np.float32)
+        right_eye = np.array([
+            [ex2, ey2],
+            [ex2 + ew2 * 0.25, ey2],
+            [ex2 + ew2 * 0.5, ey2 + eh2 * 0.3],
+            [ex2 + ew2, ey2],
+            [ex2 + ew2 * 0.5, ey2 + eh2 * 0.8],
+            [ex2 + ew2 * 0.75, ey2],
+        ], dtype=np.float32)
+        return left_eye, right_eye
+    except Exception:
         return None
-    landmarks = landmarks_list[0]
-    left = landmarks.get("left_eye")
-    right = landmarks.get("right_eye")
-    if not left or not right:
-        return None
-    return np.array(left, dtype=np.float32), np.array(right, dtype=np.float32)
 
 
 
@@ -115,42 +171,36 @@ def selfie_liveness():
     
     try:
         image_bytes = image_file.read()
-        # use face_recognition to load image for consistency
-        image = face_recognition.load_image_file(io.BytesIO(image_bytes))
-        image_array = np.array(image)
+        # load image via cv2 for mediapipe
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        image_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if image_array is None:
+            return jsonify({"error": "Invalid image data"}), 400
 
-        landmarks = face_recognition.face_landmarks(image_array)
-        if not landmarks:
-            return jsonify(
-                {"liveness": "fail", "ear_score": 0.0, "message": "No face detected"}
-            ), 400
-        face_landmarks = landmarks[0]
-        left_eye = face_landmarks.get("left_eye")
-        right_eye = face_landmarks.get("right_eye")
-        if not left_eye or not right_eye:
-            return jsonify(
-                {"liveness": "fail", "ear_score": 0.0, "message": "Eye landmarks missing"}
-            ), 400
-
-        left_eye_arr = np.array(left_eye, dtype=np.float32)
-        right_eye_arr = np.array(right_eye, dtype=np.float32)
+        eyes = extract_eye_landmarks(image_array)
+        if eyes is None:
+            return jsonify({"liveness": "fail", "ear_score": 0.0, "message": "No face detected"}), 400
+        left_eye_arr, right_eye_arr = eyes
         blink_detected, ear_score = detect_blink(left_eye_arr, right_eye_arr)
         if not blink_detected:
-            return jsonify(
-                {
-                    "liveness": "fail",
-                    "ear_score": ear_score,
-                    "message": "No blink detected; liveness verification failed",
-                }
-            ), 400
+            return jsonify({
+                "liveness": "fail",
+                "ear_score": ear_score,
+                "message": "No blink detected; liveness verification failed",
+            }), 400
 
-        # embedding from face_recognition
-        encodings = face_recognition.face_encodings(image_array)
-        if not encodings:
-            return jsonify(
-                {"liveness": "fail", "ear_score": ear_score, "message": "Unable to compute embedding"}
-            ), 400
-        embedding = encodings[0]
+        # create embedding from first 50 face_mesh landmarks
+        rgb = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        results = face_mesh.process(rgb)
+        mesh = results.multi_face_landmarks[0].landmark
+        vect = []
+        for i in range(min(50, len(mesh))):
+            lm = mesh[i]
+            vect.extend([lm.x, lm.y])
+        embedding = np.array(vect, dtype=np.float32)
+        if np.linalg.norm(embedding) == 0:
+            return jsonify({"liveness": "fail", "ear_score": ear_score, "message": "Embedding zero"}), 400
+        embedding = embedding / np.linalg.norm(embedding)
         embedding_json = json.dumps(embedding.tolist())
 
         biometric = Biometric(
