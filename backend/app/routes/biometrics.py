@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify
 from PIL import Image
 import cv2
 
-# try to import mediapipe; if it's not available we'll revert to Haar cascades
+# Require MediaPipe; do not allow Haar-cascade fallback at runtime.
 mp = None
 face_mesh = None
 try:
@@ -18,8 +18,13 @@ try:
         max_num_faces=1,
         refine_landmarks=True,
     )
-except ImportError:
-    print("[WARNING] mediapipe not installed, falling back to Haar cascades")
+except Exception as e:
+    # Fail fast: MediaPipe MUST be available for this application.
+    raise RuntimeError(
+        "MediaPipe is required for biometric landmarking. "
+        "Install the `mediapipe` package in your Python environment (e.g. in venv311) "
+        "and restart the server. Example: `python -m pip install mediapipe`"
+    ) from e
 
 from app.db import db
 from app.models import Biometric
