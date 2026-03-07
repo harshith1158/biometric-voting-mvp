@@ -6,7 +6,7 @@ import os
 from app.config import Config
 from app.db import db
 from app.services.hash_chain import create_genesis_block
-from app.routes import register, chain, auth, biometrics
+from app.routes import register, chain, auth, biometrics, ekyc
 
 
 def create_app():
@@ -34,6 +34,7 @@ def create_app():
     app.register_blueprint(chain.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(biometrics.bp)
+    app.register_blueprint(ekyc.bp)
 
     # Initialize Swagger after blueprints are registered so Flasgger
     # discovers docstrings on blueprint endpoints (ensures /api/auth/* appear)

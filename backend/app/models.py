@@ -7,9 +7,13 @@ class Voter(db.Model):
     __tablename__ = "voters"
 
     id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    aadhaar_hash = db.Column(db.Text, nullable=False)
-    phone_hash = db.Column(db.Text, nullable=False)
-    epic_id = db.Column(db.Text, unique=True, nullable=False)
+    aadhaar_hash = db.Column(db.String(64), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    dob = db.Column(db.Date, nullable=False)
+    gender = db.Column(db.String(10), nullable=False)
+    address = db.Column(db.String(200), nullable=False)
+    phone = db.Column(db.String(10), nullable=False)
+    epic_id = db.Column(db.String(10), unique=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
