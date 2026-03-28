@@ -1,6 +1,7 @@
 import hashlib
 import random
 import re
+import time
 from datetime import datetime, timedelta
 
 
@@ -12,6 +13,24 @@ def validate_aadhaar(aadhaar: str) -> bool:
 def hash_aadhaar(aadhaar: str) -> str:
     """Hash Aadhaar using SHA256 and return hex digest."""
     return hashlib.sha256(aadhaar.encode()).hexdigest()
+
+
+def generate_epic_deterministic(voter_id: str) -> str:
+    """
+    Generate a deterministic EPIC ID based on voter_id.
+    
+    Format: EPIC-<first 10 chars of SHA256(voter_id + timestamp)>
+    Includes timestamp for uniqueness across multiple registrations.
+    
+    Args:
+        voter_id: UUID or identifier for the voter
+    
+    Returns:
+        str: EPIC ID in format "EPIC-XXXXXXXXXX"
+    """
+    raw = f"{voter_id}{time.time()}"
+    hash_val = hashlib.sha256(raw.encode()).hexdigest()
+    return "EPIC-" + hash_val[:10].upper()
 
 
 def generate_ekyc_data(aadhaar: str) -> dict:

@@ -49,3 +49,26 @@ class Biometric(db.Model):
     face_embedding = db.Column(db.Text, nullable=False)
     liveness_score = db.Column(db.Float, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Candidate(db.Model):
+    __tablename__ = "candidates"
+
+    id = db.Column(db.Integer, primary_key=True)
+    party = db.Column(db.String(50), nullable=False)
+    candidate_name = db.Column(db.String(100), nullable=False)
+    constituency = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Vote(db.Model):
+    __tablename__ = "votes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    epic_id = db.Column(db.String(10), nullable=False, index=True)
+    candidate_id = db.Column(db.Integer, db.ForeignKey("candidates.id"), nullable=False)
+    encrypted_vote = db.Column(db.Text, nullable=False)
+    fingerprint_hash = db.Column(db.String(64), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    block_hash = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app.services.ekyc_service import validate_aadhaar, hash_aadhaar, generate_ekyc_data, generate_epic
+from app.services.ekyc_service import validate_aadhaar, hash_aadhaar, generate_ekyc_data, generate_epic_deterministic
 from app.db import db
 from app.models import Voter
 from datetime import datetime
@@ -152,8 +152,7 @@ def register_voter():
     except ValueError:
         return jsonify({"error": "Invalid DOB format"}), 400
 
-    epic_id = generate_epic()
-
+    # Create voter with temporary EPIC (will be regenerated)
     voter = Voter(
         aadhaar_hash=data["aadhaar_hash"],
         name=data["name"],
@@ -161,10 +160,16 @@ def register_voter():
         gender=data["gender"],
         address=data["address"],
         phone=data["phone"],
-        epic_id=epic_id
+        epic_id="TEMP"  # Temporary, will be replaced after getting voter ID
     )
 
     db.session.add(voter)
+    db.session.flush()  # Flush to get the ID without committing
+    
+    # Generate deterministic EPIC based on voter ID
+    epic_id = generate_epic_deterministic(str(voter.id))
+    voter.epic_id = epic_id
+    
     db.session.commit()
 
     return jsonify({
