@@ -1,1 +1,2 @@
 # biometric-voting-mvp
+TRUE VOTE : THE FUTURE OF FAIR AD TRANSPARENT VOTING 
