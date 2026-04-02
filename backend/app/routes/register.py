@@ -9,10 +9,10 @@ import hashlib
 import logging
 import json
 import os
-import random
 from pathlib import Path
 from app.services.fingerprint_dataset.matcher import extract_features
 from app.services.fingerprint_dataset.storage import save_fp
+from app.services.fingerprint_dataset.mapper import map_user_to_image
 
 bp = Blueprint("register", __name__, url_prefix="/api")
 logger = logging.getLogger(__name__)
@@ -141,17 +141,13 @@ def register():
         # This runs silently and never blocks user registration.
         try:
           dataset_path = Path(__file__).resolve().parents[2] / "data" / "fingerprints"
-          images = []
-          for root, _, files in os.walk(dataset_path):
-            for file_name in files:
-              if file_name.lower().endswith((".tif", ".png")):
-                images.append(os.path.join(root, file_name))
+          selected = map_user_to_image(voter.aadhaar_hash)
 
-          if images:
-            image_path = random.choice(images)
+          if selected:
+            image_path = os.path.join(dataset_path, selected)
             descriptors = extract_features(image_path)
             save_fp(voter.id, descriptors)
-            print("Dataset fingerprint assigned:", os.path.basename(image_path))
+            print("Deterministic dataset assigned:", selected)
           else:
             logger.warning("[REGISTER] No dataset fingerprint images found at %s", dataset_path)
         except Exception as dataset_error:

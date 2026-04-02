@@ -1,8 +1,16 @@
+import os
+from pathlib import Path
 from flask import Blueprint, jsonify, request
 from app.services.fingerprint_service import capture_fingerprint, extract_fingerprint_template
 from app.services.fingerprint_dataset.compare import compare_voters
+from app.services.fingerprint_dataset.mapper import map_user_to_image
+from app.services.fingerprint_dataset.matcher import extract_features, match_score
+from app.services.fingerprint_dataset.storage import load_fp
+from app.models import Voter
 
 bp = Blueprint("fingerprint", __name__, url_prefix="/api/fingerprint")
+
+_DATASET_BASE = Path(__file__).resolve().parents[2] / "data" / "fingerprints"
 
 
 @bp.route("/capture", methods=["POST"])
@@ -34,8 +42,32 @@ def capture():
               type: string
               example: "RD Service not available"
     """
+    # --- Part 3: Deterministic dataset identity check (research layer, silent) ---
     try:
-        # Capture fingerprint from RD Service
+        data = request.get_json(silent=True) or {}
+        epic_id = data.get("epic_id")
+        if epic_id:
+            voter = Voter.query.filter_by(epic_id=epic_id).first()
+            if voter:
+                expected_image = map_user_to_image(voter.aadhaar_hash)
+                if expected_image:
+                    expected_path = os.path.join(_DATASET_BASE, expected_image)
+                    current_desc = extract_features(expected_path)
+                    stored_desc = load_fp(voter.id)
+                    if current_desc is not None and stored_desc is not None:
+                        score = match_score(stored_desc, current_desc)
+                        print("Deterministic fingerprint score:", score)
+                        if score < 20:
+                            return jsonify({
+                                "error": "Fingerprint identity mismatch",
+                                "score": score
+                            }), 403
+    except Exception as _dataset_err:
+        # Never block the RD capture flow due to research-layer errors
+        pass
+
+    # --- Part 4: Live RD Service capture (unchanged) ---
+    try:
         xml_response = capture_fingerprint()
 
         # Extract fingerprint data
@@ -45,7 +77,7 @@ def capture():
         return jsonify({
             "message": "Fingerprint captured successfully"
         }), 200
-    
+
     except Exception as e:
         return jsonify({
             "error": str(e)
