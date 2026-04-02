@@ -1,24 +1,42 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+import logging
+from sqlalchemy import func
 from app.db import db
 from app.models import Voter, Vote, Candidate
-from app.services.fingerprint_service import capture_fingerprint, extract_fingerprint_template
 from app.services.vote_service import encrypt_vote
 from app.services.blockchain_service import create_block, get_chain_status
 
+logger = logging.getLogger(__name__)
 bp = Blueprint("booth", __name__, url_prefix="/api")
+
+
+def _get_or_create_nota_candidate():
+  """Return NOTA candidate row, creating one if missing."""
+  nota = Candidate.query.filter(func.lower(Candidate.candidate_name) == "nota").first()
+  if nota:
+    return nota
+
+  nota = Candidate(
+    candidate_name="NOTA",
+    party="None of the Above",
+    constituency="All Constituencies",
+  )
+  db.session.add(nota)
+  db.session.flush()
+  return nota
 
 
 @bp.route("/cast_vote", methods=["POST"])
 def cast_vote():
     """
-    Cast a vote for a candidate using fingerprint authentication.
+    Cast a vote for a candidate at the voting booth.
     ---
     tags:
       - Voting Booth
-    summary: Cast a vote with fingerprint verification
+    summary: Cast a vote
     description: >
-      Authenticate voter via EPIC ID, capture fingerprint, verify candidate,
+      Receive EPIC ID and candidate ID, verify voter hasn't voted,
       encrypt vote, and record to blockchain.
     parameters:
       - name: body
@@ -52,7 +70,7 @@ def cast_vote():
           properties:
             error:
               type: string
-              example: "Voter has already cast a vote"
+              example: "Already voted"
       404:
         description: EPIC or candidate not found
         schema:
@@ -68,76 +86,94 @@ def cast_vote():
           properties:
             error:
               type: string
-              example: "RD Service not available"
+              example: "Error during vote casting"
     """
     data = request.get_json()
     
     # Validate input
     if not data or "epic_id" not in data or "candidate_id" not in data:
-        return jsonify({"error": "epic_id and candidate_id required"}), 400
+      return jsonify({"error": "epic_id and candidate_id required"}), 400
     
     epic_id = data["epic_id"]
-    candidate_id = data["candidate_id"]
+    raw_candidate_id = data["candidate_id"]
     
     try:
         # 1. Validate EPIC exists in voter table
         voter = Voter.query.filter_by(epic_id=epic_id).first()
         if not voter:
+            logger.warning(f"Vote attempt with invalid EPIC: {epic_id}")
             return jsonify({"error": "EPIC not found"}), 404
+
+        # 2. Check if voter already voted
+        if voter.has_voted:
+            logger.warning(f"Double vote attempt by voter {voter.id} with EPIC {epic_id}")
+            return jsonify({"error": "Already voted"}), 400
         
-        # 2. Check voter has not already voted
+        # Double-check using Vote table as backup
         existing_vote = Vote.query.filter_by(epic_id=epic_id).first()
         if existing_vote:
-            return jsonify({"error": "Voter has already cast a vote"}), 400
+            logger.warning(f"Vote already recorded for EPIC {epic_id}")
+            if not voter.has_voted:
+                voter.has_voted = True
+                db.session.commit()
+            return jsonify({"error": "Already voted"}), 400
         
-        # 3. Validate candidate exists
-        candidate = Candidate.query.get(candidate_id)
+        # 3. Validate candidate exists (accept int IDs and "nota" string)
+        candidate_id = None
+        candidate = None
+
+        try:
+          candidate_id = int(raw_candidate_id)
+          candidate = Candidate.query.get(candidate_id)
+        except (TypeError, ValueError):
+          if str(raw_candidate_id).strip().lower() == "nota":
+            candidate = _get_or_create_nota_candidate()
+          if candidate:
+            candidate_id = candidate.id
+
         if not candidate:
+            logger.error(f"Invalid candidate_id: {raw_candidate_id}")
             return jsonify({"error": "Candidate not found"}), 404
-        
-        # 4. Capture fingerprint
-        xml_response = capture_fingerprint()
-        fp_result = extract_fingerprint_template(xml_response)
-        fingerprint_hash = fp_result["fingerprint_hash"]
-        
-        # 5. Encrypt vote
+
+        # 4. Encrypt vote
         encrypted_vote = encrypt_vote(candidate_id, epic_id)
         
-        # 6. Generate blockchain block hash
-        # Get the last block hash for previous_hash
+        # 5. Generate blockchain block hash
         chain_status = get_chain_status()
         if chain_status["last_block_hash"]:
             previous_hash = chain_status["last_block_hash"]
         else:
-            # Genesis block
             previous_hash = "0" * 64
         
         vote_data = {
             "epic_id": epic_id,
-            "candidate_id": candidate_id,
-            "fingerprint_hash": fingerprint_hash
+            "candidate_id": candidate_id
         }
         timestamp = datetime.utcnow()
         block_hash = create_block(previous_hash, vote_data, timestamp)
         
-        # 7. Store vote record
+        # 6. Store vote record
         vote = Vote(
             epic_id=epic_id,
             candidate_id=candidate_id,
             encrypted_vote=encrypted_vote,
-            fingerprint_hash=fingerprint_hash,
             timestamp=timestamp,
             block_hash=block_hash
         )
         db.session.add(vote)
+        
+        # 7. Mark voter as voted
+        voter.has_voted = True
         db.session.commit()
         
+        logger.info(f"✓ Vote cast successfully for EPIC {epic_id}, candidate {candidate_id}")
         return jsonify({
             "status": "vote_cast",
             "block_hash": block_hash
         }), 201
     
     except Exception as e:
+        logger.error(f"Vote casting error: {str(e)}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 

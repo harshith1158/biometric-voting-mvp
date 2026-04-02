@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from app.services.fingerprint_service import capture_fingerprint, extract_fingerprint_template
+from app.services.fingerprint_dataset.compare import compare_voters
 
 bp = Blueprint("fingerprint", __name__, url_prefix="/api/fingerprint")
 
@@ -14,19 +15,16 @@ def capture():
     summary: Capture fingerprint biometric
     description: >
       Connects to FM220U RD Service and captures a fingerprint.
-      Returns the fingerprint hash for voter authentication.
+      Simply captures and returns the fingerprint template.
     responses:
       200:
-        description: Fingerprint captured and hashed
+        description: Fingerprint captured successfully
         schema:
           type: object
           properties:
-            status:
+            message:
               type: string
-              example: "success"
-            fingerprint_hash:
-              type: string
-              example: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+              example: "Fingerprint captured successfully"
       500:
         description: RD Service error
         schema:
@@ -39,18 +37,38 @@ def capture():
     try:
         # Capture fingerprint from RD Service
         xml_response = capture_fingerprint()
-        
-        # Extract and hash fingerprint data
+
+        # Extract fingerprint data
         result = extract_fingerprint_template(xml_response)
-        
+
+        # Just capture - no matching, no comparison
         return jsonify({
-            "status": "success",
-            "fingerprint_hash": result["fingerprint_hash"],
-            "quality_score": result["quality_score"]
+            "message": "Fingerprint captured successfully"
         }), 200
     
     except Exception as e:
         return jsonify({
-            "error": str(e),
-            "status": "error"
+            "error": str(e)
         }), 500
+
+
+@bp.route("/dataset-compare", methods=["POST"])
+def dataset_compare():
+    """Research-only fingerprint similarity comparison for admin diagnostics."""
+    try:
+        data = request.json or {}
+        voter1_id = data.get("voter1_id")
+        voter2_id = data.get("voter2_id")
+
+        if voter1_id is None or voter2_id is None:
+            return jsonify({"error": "voter1_id and voter2_id are required"}), 400
+
+        score = compare_voters(voter1_id, voter2_id)
+        return jsonify({
+            "voter1_id": str(voter1_id),
+            "voter2_id": str(voter2_id),
+            "similarity_score": int(score),
+            "unique_identity": bool(score < 30),
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
