@@ -1,8 +1,17 @@
 import re
+import hashlib
 from flask import Blueprint, request, jsonify
 from app.services import otp_service
+from app.services.ekyc_service import generate_ekyc_data
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+# In-memory demo OTP store keyed by Aadhaar hash.
+otp_store = {}
+
+
+def hash_field(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def validate_aadhaar(aadhaar: str) -> bool:
@@ -48,9 +57,28 @@ def request_otp():
     aadhaar = data.get("aadhaar", "").strip()
     phone = data.get("phone", "").strip()
 
-    if not aadhaar or not validate_aadhaar(aadhaar):
-        return jsonify({"error": "Invalid aadhaar format. Must be 12 digits."}), 400
+    if aadhaar:
+        if not validate_aadhaar(aadhaar):
+            return jsonify({"error": "Invalid aadhaar format. Must be 12 digits."}), 400
 
+        ekyc_data = generate_ekyc_data(aadhaar)
+        resolved_phone = ekyc_data.get("phone", "")
+        if not resolved_phone or not validate_phone(resolved_phone):
+            return jsonify({"error": "Unable to resolve registered phone for Aadhaar."}), 400
+
+        seed = int(aadhaar[-6:])
+        otp = str(100000 + (seed % 900000))
+        aadhaar_hash = hash_field(aadhaar)
+        otp_store[aadhaar_hash] = otp
+        masked = "XXXXXX" + resolved_phone[-4:]
+
+        return jsonify({
+            "message": "OTP sent",
+            "phone": masked,
+            "otp": otp,  # Demo mode only
+        }), 201
+
+    # Backward-compatible fallback for existing phone-based OTP flow.
     if not phone or not validate_phone(phone):
         return jsonify({"error": "Invalid phone format. Must be 10 digits."}), 400
 
@@ -92,15 +120,29 @@ def verify_otp():
         description: Invalid phone or OTP format
     """
     data = request.json or {}
+    aadhaar = data.get("aadhaar", "").strip()
     phone = data.get("phone", "").strip()
     otp = data.get("otp", "").strip()
-
-    if not phone or not validate_phone(phone):
-        return jsonify({"error": "Invalid phone format."}), 400
 
     if not otp or not re.match(r"^\d{6}$", otp):
         return jsonify({"error": "Invalid OTP format."}), 400
 
-    verified = otp_service.verify_otp(phone, otp)
+    if aadhaar:
+        if not validate_aadhaar(aadhaar):
+            return jsonify({"error": "Invalid aadhaar format. Must be 12 digits."}), 400
+
+        # Deterministic OTP: same formula as request-otp, so no in-memory store needed
+        seed = int(aadhaar[-6:])
+        expected_otp = str(100000 + (seed % 900000))
+
+        if otp != expected_otp:
+            return jsonify({"error": "Invalid OTP"}), 400
+
+        return jsonify({"verified": True}), 200
+
+    if not phone or not validate_phone(phone):
+      return jsonify({"error": "Invalid phone format."}), 400
+
+    verified, _ = otp_service.verify_otp(phone, otp)
 
     return jsonify({"verified": verified}), 200

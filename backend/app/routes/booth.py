@@ -1,3 +1,4 @@
+import hashlib
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 import logging
@@ -206,3 +207,40 @@ def chain_status():
     """
     status = get_chain_status()
     return jsonify(status), 200
+
+
+@bp.route("/voter_lookup", methods=["GET"])
+def voter_lookup():
+    """Check if an EPIC ID exists and return basic voter info."""
+    epic_id = request.args.get("epic_id", "").strip()
+    if not epic_id:
+        return jsonify({"error": "epic_id is required"}), 400
+
+    voter = Voter.query.filter_by(epic_id=epic_id).first()
+    if not voter:
+        return jsonify({"error": "Invalid EPIC ID. No voter found with this ID."}), 404
+
+    if voter.has_voted:
+        return jsonify({"error": "This voter has already cast their vote."}), 400
+
+    return jsonify({
+        "valid": True,
+        "name": voter.name,
+        "epic_id": voter.epic_id,
+    }), 200
+
+
+@bp.route("/check_aadhaar", methods=["POST"])
+def check_aadhaar():
+    """Check if an Aadhaar number is already registered."""
+    data = request.get_json()
+    aadhaar = str(data.get("aadhaar", "")).strip() if data else ""
+    if not aadhaar:
+        return jsonify({"error": "aadhaar is required"}), 400
+
+    aadhaar_hash = hashlib.sha256(aadhaar.encode()).hexdigest()
+    existing = Voter.query.filter_by(aadhaar_hash=aadhaar_hash).first()
+    if existing:
+        return jsonify({"registered": True, "epic_id": existing.epic_id}), 200
+
+    return jsonify({"registered": False}), 200

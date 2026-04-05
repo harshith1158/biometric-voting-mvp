@@ -1,0 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Poppins', 'Trebuchet MS', sans-serif;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 45%, #ecfdf5 100%);
+  color: #0f172a;
+}
+
+:root {
+  --tv-primary: #1e3a8a;
+  --tv-accent: #16a34a;
+  --tv-surface: #ffffff;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: ripple 600ms linear;
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+@keyframes otpShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
+}
+
+@keyframes checkPop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  0% {
+    transform: scale(0.88);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.otp-shake {
+  animation: otpShake 0.35s ease-in-out;
+}
+
+.check-pop {
+  animation: checkPop 0.3s ease-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.22s ease-out;
+}
+
+button {
+  position: relative;
+  overflow: hidden;
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md font-semibold text-base transition-all duration-300 cursor-pointer;
+  }
+  
+  .btn-secondary {
+    @apply px-6 py-4 bg-white text-blue-700 border border-blue-200 rounded-xl shadow-md font-semibold text-base hover:bg-blue-50 transition-all duration-300 cursor-pointer;
+  }
+  
+  .card {
+    @apply bg-white rounded-2xl shadow-lg p-6 transition-all duration-300;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 border border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-300;
+  }
+}

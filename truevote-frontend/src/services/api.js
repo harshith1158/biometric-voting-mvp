@@ -92,6 +92,13 @@ export const enrollFingerprint = (data) => API.post('/register/enroll-fingerprin
 // Research-only dataset fingerprint comparison (admin diagnostics)
 export const compareDatasetFingerprints = (data) => API.post('/fingerprint/dataset-compare', data);
 
+// UI simulation fingerprint verification
+export const verifyFingerprintSim = (data) => API.post('/fingerprint/verify', data);
+
+// Get voter's deterministically assigned fingerprint image name
+export const getMyFingerprintImage = (epicId) => API.get(`/fingerprint/my-image?epic_id=${epicId}`);
+export const listFingerprintImages = () => API.get('/fingerprint/images');
+
 // Get candidates
 export const getCandidates = () => API.get('/candidates');
 
@@ -100,5 +107,11 @@ export const castVote = (data) => API.post('/cast_vote', data);
 
 // Get chain status
 export const getChainStatus = () => API.get('/chain_status');
+
+// Check if Aadhaar is already registered
+export const checkAadhaar = (aadhaar) => API.post('/check_aadhaar', { aadhaar });
+
+// Validate EPIC ID at booth login
+export const voterLookup = (epic_id) => API.get(`/voter_lookup?epic_id=${encodeURIComponent(epic_id)}`);
 
 export default API;

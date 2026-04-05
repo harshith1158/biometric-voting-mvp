@@ -2,7 +2,6 @@ import hashlib
 import random
 import re
 import time
-from datetime import datetime, timedelta
 
 
 def validate_aadhaar(aadhaar: str) -> bool:
@@ -34,54 +33,59 @@ def generate_epic_deterministic(voter_id: str) -> str:
 
 
 def generate_ekyc_data(aadhaar: str) -> dict:
-    """Generate deterministic eKYC data based on Aadhaar hash as seed."""
-    # Use Aadhaar hash as seed for deterministic randomness
-    seed = int(hash_aadhaar(aadhaar), 16) % (2**32)
-    random.seed(seed)
-
-    # Name pool
-    names = [
-        "Arjun Reddy",
-        "Rahul Sharma",
-        "Priya Nair",
-        "Ananya Patel",
-        "Karan Mehta",
-        "Vikram Singh"
+    """Generate deterministic eKYC data from Aadhaar using stable, minimal logic."""
+    male_names = [
+        "Ravi", "Srinivas", "Ramesh", "Prakash", "Mahesh",
+        "Kiran", "Venkatesh", "Naresh", "Rajesh", "Harish",
+        "Chandra", "Suresh", "Gopi", "Srikanth", "Raghu",
+        "Manoj", "Anil", "Vamshi", "Naveen", "Sai"
     ]
-    name = random.choice(names)
-
-    # DOB: 1975-2004
-    start_date = datetime(1975, 1, 1)
-    end_date = datetime(2004, 12, 31)
-    days_between = (end_date - start_date).days
-    random_days = random.randint(0, days_between)
-    dob = start_date + timedelta(days=random_days)
-    dob_str = dob.strftime("%Y-%m-%d")
-
-    # Gender
-    gender = random.choice(["Male", "Female"])
-
-    # Address: City
-    cities = [
-        "Hyderabad",
-        "Delhi",
-        "Mumbai",
-        "Chennai",
-        "Bangalore",
-        "Pune"
+    female_names = [
+        "Lakshmi", "Padma", "Sravani", "Swathi", "Anitha",
+        "Deepika", "Keerthi", "Bhavani", "Sowmya", "Divya",
+        "Anjali", "Harika", "Tejaswini", "Sushma", "Madhavi",
+        "Shilpa", "Kavitha", "Renuka", "Sunitha", "Pooja"
     ]
-    address = random.choice(cities)
+    surnames = [
+        "Reddy", "Naidu", "Rao", "Yadav", "Goud",
+        "Reddy", "Reddy", "Naidu", "Rao", "Reddy"
+    ]
+    areas = [
+        "Ameerpet", "Kukatpally", "Madhapur", "Gachibowli",
+        "Secunderabad", "LB Nagar", "Dilsukhnagar",
+        "Mehdipatnam", "Uppal", "Begumpet"
+    ]
+    district = "Hyderabad"
+    state = "Telangana"
 
-    # Phone: 9XXXXXXXXX
-    phone = f"9{random.randint(100000000, 999999999)}"
+    seed = int(aadhaar[-6:])
 
-    return {
-        "name": name,
-        "dob": dob_str,
+    gender = "Female" if int(aadhaar[-1]) % 2 == 0 else "Male"
+    first = (female_names if gender == "Female" else male_names)[seed % len(male_names)]
+    last = surnames[(seed // 10) % len(surnames)]
+    full_name = f"{first} {last}"
+
+    area = areas[(seed // 100) % len(areas)]
+    address = f"{area}, {district}, {state}"
+
+    year = 1975 + (seed % 25)
+    month = (seed % 12) + 1
+    day = (seed % 28) + 1
+    dob = f"{year}-{month:02d}-{day:02d}"
+
+    # Deterministic phone generation so same Aadhaar always maps to same phone.
+    phone = "9" + str(seed).zfill(9)[:9]
+
+    profile = {
+        "name": full_name,
         "gender": gender,
+        "dob": dob,
+        "state": state,
         "address": address,
-        "phone": phone
+        "phone": phone,
     }
+
+    return profile
 
 
 def generate_epic() -> str:

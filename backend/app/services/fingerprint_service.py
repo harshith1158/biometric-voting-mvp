@@ -109,6 +109,7 @@ def extract_fingerprint_template(xml_response: str):
         
         return {
             "status": "success",
+            "fingerprint_template": pid_data,
             "fingerprint_hash": fingerprint_hash,
             "quality_score": q_score,
             "error_code": err_code,

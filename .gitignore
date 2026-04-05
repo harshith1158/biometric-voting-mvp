@@ -1,0 +1,23 @@
+# Python environments and caches
+.venv/
+venv/
+venv311/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node dependencies and build artifacts
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Logs and runtime files
+*.log
+backend.log
+backend_debug.log
+backend_err.log
+
+# OS/editor clutter
+.DS_Store
+Thumbs.db
+.vscode/*.log

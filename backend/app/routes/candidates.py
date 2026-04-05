@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify
-from app.models import Candidate
-from sqlalchemy import desc
+from app.models import Candidate, Vote
+from sqlalchemy import func
 
 bp = Blueprint("candidates", __name__, url_prefix="/api")
 
@@ -39,7 +39,22 @@ def list_candidates():
                   state:
                     type: string
                     example: "Hyderabad Central"
+                  vote_count:
+                    type: integer
+                    example: 12
     """
+    vote_counts = dict(
+        db_row
+        for db_row in (
+            Vote.query.with_entities(
+                Vote.candidate_id,
+                func.count(Vote.id)
+            )
+            .group_by(Vote.candidate_id)
+            .all()
+        )
+    )
+
     # Query all candidates, excluding NOTA
     candidates = Candidate.query.filter(Candidate.candidate_name != "NOTA").all()
     
@@ -53,7 +68,8 @@ def list_candidates():
             "id": c.id,
             "name": c.candidate_name,
             "party": c.party,
-            "state": c.constituency
+        "state": c.constituency,
+        "vote_count": int(vote_counts.get(c.id, 0))
         })
     
     # Add NOTA at the end if it exists
@@ -62,7 +78,8 @@ def list_candidates():
             "id": nota.id,
             "name": nota.candidate_name,
             "party": nota.party,
-            "state": nota.constituency
+        "state": nota.constituency,
+        "vote_count": int(vote_counts.get(nota.id, 0))
         })
     
     return jsonify({

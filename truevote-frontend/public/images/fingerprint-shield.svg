@@ -1,0 +1,25 @@
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <defs>
+    <linearGradient id="shieldGrad" x1="600" y1="130" x2="600" y2="1070" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#94a3b8" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M600 120C470 205 340 230 245 238C245 430 255 825 600 1065C945 825 955 430 955 238C860 230 730 205 600 120Z"
+        stroke="url(#shieldGrad)" stroke-width="22" stroke-linejoin="round"/>
+
+  <g stroke="#ffffff" stroke-opacity="0.75" stroke-linecap="round" stroke-width="14">
+    <path d="M410 540C445 430 545 360 650 365C770 370 865 470 872 593"/>
+    <path d="M445 600C475 510 550 450 640 452C740 455 820 535 826 637"/>
+    <path d="M478 658C503 586 563 538 633 539C710 540 772 602 777 679"/>
+    <path d="M510 708C530 653 575 617 627 618C683 620 730 666 734 724"/>
+    <path d="M548 753C563 713 593 687 628 688C667 690 698 720 701 760"/>
+  </g>
+
+  <g stroke="#cbd5e1" stroke-opacity="0.58" stroke-linecap="round" stroke-width="9">
+    <path d="M600 422V862"/>
+    <path d="M548 452V842"/>
+    <path d="M652 452V842"/>
+  </g>
+</svg>

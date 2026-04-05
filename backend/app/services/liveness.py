@@ -1,4 +1,7 @@
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def compute_ear(landmarks: np.ndarray) -> float:
@@ -17,7 +20,7 @@ def compute_ear(landmarks: np.ndarray) -> float:
     Returns:
         float: EAR value (lower values indicate closed/closed eyes)
     """
-    if landmarks.shape[0] < 6 or landmarks.shape[1] != 2:
+    if landmarks is None or landmarks.shape[0] < 6 or landmarks.shape[1] != 2:
         return 1.0
 
     p1 = landmarks[0]
@@ -55,12 +58,19 @@ def detect_blink(
         tuple: (blink_detected, ear_score)
             - blink_detected: bool, True if avg EAR < threshold
             - ear_score: float, average EAR across both eyes (rounded to 3 decimals)
+    
+    Raises:
+        ValueError: If eye landmarks are invalid
     """
     try:
+        if left_eye is None or right_eye is None:
+            raise ValueError("Eye landmarks cannot be None")
+        
         left_ear = compute_ear(left_eye)
         right_ear = compute_ear(right_eye)
         avg_ear = (left_ear + right_ear) / 2.0
         blink_detected = avg_ear < threshold
         return blink_detected, round(avg_ear, 3)
-    except Exception:
-        return False, 1.0
+    except Exception as e:
+        logger.error(f"Blink detection error: {str(e)}")
+        raise RuntimeError(f"Blink detection failed: {str(e)}")

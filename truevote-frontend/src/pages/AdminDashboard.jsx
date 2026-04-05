@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  compareDatasetFingerprints,
   getCandidates,
   getChainStatus,
   getTamperAlertsCount,
 } from '../services/api';
+import API from '../services/api';
 import {
   PieChart,
   Pie,
@@ -30,6 +31,7 @@ function hasCandidateVoteField(candidate) {
 }
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [candidates, setCandidates] = useState([]);
   const [chainStatus, setChainStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,12 +40,7 @@ export default function AdminDashboard() {
   const [tamperAttempts, setTamperAttempts] = useState(0);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [voterOneId, setVoterOneId] = useState('');
-  const [voterTwoId, setVoterTwoId] = useState('');
-  const [fpCompareLoading, setFpCompareLoading] = useState(false);
-  const [fpCompareError, setFpCompareError] = useState('');
-  const [fpCompareResult, setFpCompareResult] = useState(null);
-
+  const [declaring, setDeclaring] = useState(false);
   const fetchData = async (isInitial = false) => {
     if (isInitial) {
       setLoading(true);
@@ -91,29 +88,6 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const runFingerprintCompare = async () => {
-    if (!voterOneId || !voterTwoId) {
-      setFpCompareError('Enter both voter IDs for fingerprint comparison.');
-      return;
-    }
-
-    setFpCompareLoading(true);
-    setFpCompareError('');
-
-    try {
-      const response = await compareDatasetFingerprints({
-        voter1_id: voterOneId,
-        voter2_id: voterTwoId,
-      });
-      setFpCompareResult(response?.data ?? null);
-    } catch (requestError) {
-      setFpCompareResult(null);
-      setFpCompareError(requestError?.response?.data?.error || 'Fingerprint comparison failed.');
-    } finally {
-      setFpCompareLoading(false);
-    }
-  };
-
   const data = useMemo(
     () => candidates.map((candidate) => ({
       name: candidate.name,
@@ -160,7 +134,7 @@ export default function AdminDashboard() {
   }, [candidates]);
 
   return (
-    <div className="px-4 py-10 transition-all duration-300 ease-in-out">
+    <div className="px-4 py-10 transition-opacity duration-500 opacity-100 ease-in-out">
       <div className="mx-auto max-w-6xl">
         <div className="rounded-[2rem] bg-white/5 border border-white/10 backdrop-blur-md shadow-lg hover:shadow-xl transition duration-300 p-6 md:p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -187,6 +161,19 @@ export default function AdminDashboard() {
                 className="rounded-xl bg-red-500 px-4 py-2 text-white shadow-lg transition-all duration-300 hover:scale-105 hover:bg-red-600"
               >
                 Logout
+              </button>
+              <button
+                onClick={async () => {
+                  setDeclaring(true);
+                  try { await API.post('/declare_result'); } catch (_) { /* endpoint may not exist */ }
+                  localStorage.setItem('tv_result_declared', 'true');
+                  setDeclaring(false);
+                  navigate('/result');
+                }}
+                disabled={declaring}
+                className="rounded-xl bg-gradient-to-r from-red-600 to-orange-500 px-4 py-2 text-white shadow-lg transition-all duration-300 hover:scale-105 disabled:opacity-60 font-semibold"
+              >
+                {declaring ? 'Declaring...' : 'Declare Result'}
               </button>
             </div>
           </div>
@@ -261,56 +248,6 @@ export default function AdminDashboard() {
                 {loading ? 'Checking...' : chainValid ? 'Chain valid' : 'Chain invalid'}
               </p>
             </div>
-          </div>
-
-          <div className="mt-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md shadow-lg p-5">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <h2 className="font-bold text-white">Fingerprint Research Diagnostics</h2>
-              <span className="text-xs text-gray-400">Background simulation layer</span>
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-              <input
-                type="text"
-                value={voterOneId}
-                onChange={(e) => setVoterOneId(e.target.value)}
-                placeholder="Voter 1 ID"
-                className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-white placeholder:text-gray-400 outline-none focus:border-blue-400"
-              />
-              <input
-                type="text"
-                value={voterTwoId}
-                onChange={(e) => setVoterTwoId(e.target.value)}
-                placeholder="Voter 2 ID"
-                className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-white placeholder:text-gray-400 outline-none focus:border-blue-400"
-              />
-              <button
-                onClick={runFingerprintCompare}
-                className="rounded-xl bg-gradient-to-r from-blue-600 to-green-600 px-4 py-2 text-white shadow-lg transition-all duration-300 hover:scale-105"
-              >
-                {fpCompareLoading ? 'Comparing...' : 'Compare'}
-              </button>
-            </div>
-
-            {fpCompareError ? (
-              <div className="mt-3 rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-300">
-                {fpCompareError}
-              </div>
-            ) : null}
-
-            {fpCompareResult ? (
-              <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3">
-                <p className="text-sm text-emerald-100">
-                  Fingerprint uniqueness score: <span className="font-bold">{fpCompareResult.similarity_score ?? 0}</span>
-                </p>
-                <p className="mt-1 text-sm text-emerald-100">
-                  Unique identity indicator:{' '}
-                  <span className="font-bold">
-                    {fpCompareResult.unique_identity ? 'Likely unique' : 'Potential overlap'}
-                  </span>
-                </p>
-              </div>
-            ) : null}
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">

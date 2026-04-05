@@ -147,6 +147,8 @@ def register():
             image_path = os.path.join(dataset_path, selected)
             descriptors = extract_features(image_path)
             save_fp(voter.id, descriptors)
+            voter.fp_dataset_id = Path(selected).name  # Store just the filename (e.g. "101_8.tif")
+            db.session.commit()
             print("Deterministic dataset assigned:", selected)
           else:
             logger.warning("[REGISTER] No dataset fingerprint images found at %s", dataset_path)

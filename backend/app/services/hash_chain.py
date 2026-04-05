@@ -14,10 +14,12 @@ def get_last_block():
 
 def create_genesis_block():
     if Block.query.count() == 0:
+        timestamp = datetime.utcnow().isoformat()
         genesis = Block(
             previous_hash="0" * 64,
             data_hash=sha256("GENESIS"),
-            block_hash=sha256("GENESIS" + "0" * 64),
+            block_hash=sha256("GENESIS" + "0" * 64 + timestamp),
+            hash_timestamp=timestamp,
         )
         db.session.add(genesis)
         db.session.commit()
@@ -33,6 +35,7 @@ def append_block(data: str) -> str:
         previous_hash=last.block_hash,
         data_hash=data_hash,
         block_hash=block_hash,
+        hash_timestamp=timestamp,
     )
     db.session.add(block)
     db.session.commit()
@@ -45,7 +48,7 @@ def verify_chain() -> bool:
         recalculated = sha256(
             blocks[i - 1].block_hash
             + blocks[i].data_hash
-            + blocks[i].created_at.isoformat()
+            + blocks[i].hash_timestamp
         )
         if recalculated != blocks[i].block_hash:
             return False

@@ -8,25 +8,32 @@ from app.db import db
 
 def seed_candidates():
     """Initialize candidate data."""
-    candidates_data = [
-        {"party": "BJP", "candidate_name": "Arjun Mehta", "constituency": "Hyderabad Central"},
-        {"party": "INC", "candidate_name": "Rahul Sharma", "constituency": "Hyderabad Central"},
-        {"party": "AAP", "candidate_name": "Priya Nair", "constituency": "Hyderabad Central"},
-        {"party": "IND", "candidate_name": "Vikram Singh", "constituency": "Hyderabad Central"},
-        {"party": "TVK", "candidate_name": "Joseph Vijay", "constituency": "Hyderabad Central"},
-        {"party": "Independent", "candidate_name": "NOTA", "constituency": "National"},  # NOTA appears last
+    candidates = [
+        {"name": "Narendra Modi", "party": "BJP", "state": "Telangana"},
+        {"name": "Rahul Gandhi", "party": "INC", "state": "Telangana"},
+        {"name": "Revanth Reddy", "party": "TDP", "state": "Telangana"},
+        {"name": "Stalin", "party": "DMK", "state": "Telangana"},
+        {"name": "Joseph Vijay", "party": "TVK", "state": "Telangana"},
     ]
-    
-    # Check if candidates already exist
-    if Candidate.query.first() is not None:
-        return  # Already seeded
-    
-    for data in candidates_data:
+
+    existing_keys = {
+        (candidate.party, candidate.candidate_name, candidate.constituency)
+        for candidate in Candidate.query.all()
+    }
+
+    seeded_any = False
+    for data in candidates:
+        candidate_key = (data["party"], data["name"], data["state"])
+        if candidate_key in existing_keys:
+            continue
+
         candidate = Candidate(
             party=data["party"],
-            candidate_name=data["candidate_name"],
-            constituency=data["constituency"]
+            candidate_name=data["name"],
+            constituency=data["state"]
         )
         db.session.add(candidate)
-    
-    db.session.commit()
+        seeded_any = True
+
+    if seeded_any:
+        db.session.commit()

@@ -84,6 +84,105 @@ def capture():
         }), 500
 
 
+@bp.route("/my-image", methods=["GET"])
+def my_image():
+    """Return the deterministically assigned dataset fingerprint filename for the requesting voter."""
+    epic_id = request.args.get("epic_id")
+    if not epic_id:
+        return jsonify({"error": "epic_id query param required"}), 400
+
+    voter = Voter.query.filter_by(epic_id=epic_id).first()
+    if not voter:
+        return jsonify({"error": "EPIC not found"}), 404
+
+    image_rel = map_user_to_image(voter.aadhaar_hash)
+    if not image_rel:
+        return jsonify({"error": "No dataset image assigned"}), 404
+
+    # Return just the plain filename (no subdir) so UI can display and match easily
+    filename = Path(image_rel).name
+    return jsonify({"image": filename, "path": image_rel}), 200
+
+
+@bp.route("/verify", methods=["POST"])
+def verify():
+    """Hybrid fingerprint verification: strict ID match + ORB analytics score."""
+    try:
+        data = request.get_json(silent=True) or {}
+        epic_id = data.get("epic_id")
+        fingerprint_id = data.get("fingerprint_id")
+
+        if not epic_id:
+            return jsonify({"error": "epic_id is required", "status": "fail"}), 400
+        if not fingerprint_id:
+            return jsonify({"error": "Fingerprint input required", "status": "fail"}), 400
+
+        voter = Voter.query.filter_by(epic_id=epic_id).first()
+        if not voter:
+            return jsonify({"error": "EPIC not found", "status": "fail"}), 404
+
+        # Resolve assigned fingerprint ID (stored column, or derive for legacy voters)
+        assigned_fp = voter.fp_dataset_id or (
+            Path(map_user_to_image(voter.aadhaar_hash)).name
+            if map_user_to_image(voter.aadhaar_hash) else None
+        )
+
+        # Normalise to bare filename for comparison (strip any path prefix)
+        selected_name = Path(fingerprint_id).name
+        assigned_name = Path(assigned_fp).name if assigned_fp else None
+
+        # ── PART 2: STRICT IDENTITY CHECK ─────────────────────────────────────
+        if assigned_name is None or selected_name != assigned_name:
+            return jsonify({
+                "error": "Fingerprint identity mismatch",
+                "status": "fail",
+                "assigned": assigned_name or "unknown",
+                "selected": selected_name,
+            }), 403
+
+        # ── PART 3: ORB ANALYTICS SCORE (runs only after identity confirmed) ──
+        matches = list(_DATASET_BASE.rglob(selected_name))
+        if not matches:
+            return jsonify({"error": f"Dataset image not found: {selected_name}", "status": "fail"}), 404
+        current_path = matches[0]
+
+        current_desc = extract_features(str(current_path))
+        stored_desc = load_fp(voter.id)
+
+        score = 0.0
+        if current_desc is not None and stored_desc is not None:
+            raw = match_score(stored_desc, current_desc)
+            score = round(raw / max(len(stored_desc), 1), 2)
+
+        print(f"Hybrid verify {epic_id}: id_match=True orb_score={score}")
+
+        # ── PART 4: HYBRID RESPONSE ────────────────────────────────────────────
+        return jsonify({
+            "message": "Fingerprint verified",
+            "status": "pass",
+            "fingerprint_id": assigned_name,
+            "score": score,
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e), "status": "fail"}), 500
+
+
+@bp.route("/images", methods=["GET"])
+def list_images():
+    """Return sorted deduplicated list of all dataset fingerprint filenames."""
+    try:
+        seen = set()
+        files = []
+        for p in sorted(_DATASET_BASE.rglob("*")):
+            if p.suffix.lower() in (".tif", ".png", ".bmp") and p.name not in seen:
+                seen.add(p.name)
+                files.append(p.name)
+        return jsonify({"images": files}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @bp.route("/dataset-compare", methods=["POST"])
 def dataset_compare():
     """Research-only fingerprint similarity comparison for admin diagnostics."""
