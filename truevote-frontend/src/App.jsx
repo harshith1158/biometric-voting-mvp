@@ -6,7 +6,7 @@ import Home from './pages/Home';
 import About from './pages/About';
 import FAQ from './pages/FAQ';
 import Register from './pages/Register';
-import OTP from './pages/OTP';
+import RealRegister from './pages/RealRegister';
 import Liveness from './pages/Liveness';
 import Success from './pages/Success';
 import BoothLogin from './pages/BoothLogin';
@@ -35,25 +35,37 @@ function WatermarkBackground() {
 
 function ProtectedAdminRoute() {
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('admin') === 'true');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check localStorage on mount to ensure we have the latest value
-    setIsAdmin(localStorage.getItem('admin') === 'true');
+    // Check localStorage immediately on mount
+    const adminFlag = localStorage.getItem('admin') === 'true';
+    console.log('[ProtectedAdminRoute] Checking admin flag:', adminFlag);
+    setIsAdmin(adminFlag);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
     const handleStorageChange = () => {
-      setIsAdmin(localStorage.getItem('admin') === 'true');
+      const adminFlag = localStorage.getItem('admin') === 'true';
+      console.log('[ProtectedAdminRoute] Storage changed, admin flag:', adminFlag);
+      setIsAdmin(adminFlag);
     };
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen"><div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin" /></div>;
+  }
+
   if (!isAdmin) {
+    console.log('[ProtectedAdminRoute] Not admin, redirecting to login');
     return <Navigate to="/admin-login" replace />;
   }
 
+  console.log('[ProtectedAdminRoute] Admin verified, rendering dashboard');
   return <AdminDashboard />;
 }
 
@@ -75,7 +87,7 @@ function App() {
               <Route path="/about" element={<About />} />
               <Route path="/faq" element={<FAQ />} />
               <Route path="/register" element={<Register />} />
-              <Route path="/otp" element={<OTP />} />
+              <Route path="/real-register" element={<RealRegister />} />
               <Route path="/liveness" element={<Liveness />} />
               <Route path="/success" element={<Success />} />
               <Route path="/booth-login" element={<BoothLogin />} />

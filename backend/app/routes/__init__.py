@@ -6,4 +6,5 @@ from . import ekyc
 from . import candidates
 from . import fingerprint
 from . import booth
+from . import admin
 

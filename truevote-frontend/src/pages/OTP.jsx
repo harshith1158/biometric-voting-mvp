@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { registerVoter, requestOtp, verifyOtp } from '../services/api';
-import { generateProfile } from '../utils/generateProfile';
+import { requestOtp, verifyOtp } from '../services/api';
 import RegistrationStepBar from '../components/RegistrationStepBar';
 
 export default function OTP() {
@@ -20,8 +19,14 @@ export default function OTP() {
   const inputRefs = useRef([]);
 
   const otp = useMemo(() => otpDigits.join(''), [otpDigits]);
-  const fallbackMaskedPhone = /^\d{12}$/.test(aadhaar)
-    ? generateProfile(aadhaar).phone_masked
+
+  // Read phone from stored profile (set by Register.jsx from DB)
+  const storedProfile = (() => {
+    try { return JSON.parse(localStorage.getItem('profile') || '{}'); } catch { return {}; }
+  })();
+  const storedPhone = storedProfile.phone || '';
+  const fallbackMaskedPhone = storedPhone
+    ? `${storedPhone.slice(0, 3)}****${storedPhone.slice(-2)}`
     : 'XXXXXX0000';
 
   useEffect(() => {
@@ -52,9 +57,8 @@ export default function OTP() {
     try {
       const response = await requestOtp({ aadhaar });
       const phoneFromApi = response?.data?.phone || '';
-      const generatedPhone = generateProfile(aadhaar).phone_masked;
 
-      setMaskedPhone(phoneFromApi || generatedPhone);
+      setMaskedPhone(phoneFromApi || fallbackMaskedPhone);
       setDemoOtp(response?.data?.otp || '');
       setResendTimer(30);
       setOtpDigits(Array(6).fill(''));
@@ -64,18 +68,6 @@ export default function OTP() {
       setError(err?.response?.data?.error || 'Failed to send OTP.');
     } finally {
       setSendingOtp(false);
-    }
-  };
-
-  const persistProfile = () => {
-    const cachedProfile = localStorage.getItem('profile');
-    if (cachedProfile) {
-      localStorage.setItem('profile', cachedProfile);
-      return;
-    }
-
-    if (/^\d{12}$/.test(aadhaar)) {
-      localStorage.setItem('profile', JSON.stringify(generateProfile(aadhaar)));
     }
   };
 
@@ -148,42 +140,20 @@ export default function OTP() {
 
       setVerified(true);
 
-      const response = await registerVoter({
-        aadhaar,
-        otp,
-      });
-
-      const epicId = response?.data?.epic_id;
-      const voterId = response?.data?.voter_id;
+      // Real-user mode: voter already exists in DB.
+      // epic_id and voter_id were stored by Register.jsx from checkAadhaar.
+      const epicId = localStorage.getItem('tv_real_epic') || localStorage.getItem('tv_epic');
+      const voterId = localStorage.getItem('tv_voter_id');
 
       if (!epicId) {
-        throw new Error('EPIC not returned by server.');
+        throw new Error('EPIC not found. Please start from the Register page.');
       }
 
       localStorage.setItem('tv_epic', epicId);
-      if (voterId) {
-        localStorage.setItem('tv_voter_id', voterId);
-      }
-      persistProfile();
 
       setTimeout(() => navigate('/liveness'), 700);
     } catch (err) {
-      const existingEpic = err?.response?.data?.epic_id;
-      const existingVoterId = err?.response?.data?.voter_id;
-
-      // If Aadhaar is already registered, backend returns existing EPIC. Reuse it and continue.
-      if (existingEpic) {
-        localStorage.setItem('tv_epic', existingEpic);
-        if (existingVoterId) {
-          localStorage.setItem('tv_voter_id', existingVoterId);
-        }
-        persistProfile();
-        setVerified(true);
-        setTimeout(() => navigate('/liveness'), 700);
-        return;
-      }
-
-      setError(err?.response?.data?.error || err?.message || 'Registration failed.');
+      setError(err?.response?.data?.error || err?.message || 'Verification failed.');
       triggerOtpShake();
     } finally {
       setLoading(false);

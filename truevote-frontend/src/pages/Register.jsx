@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { generateProfile } from '../utils/generateProfile';
 import RegistrationStepBar from '../components/RegistrationStepBar';
 import { checkAadhaar } from '../services/api';
 
@@ -21,13 +20,7 @@ export default function Register() {
     const cleanAadhaar = value.replace(/\D/g, '').slice(0, 12);
     setAadhaar(cleanAadhaar);
     setError('');
-
-    if (cleanAadhaar.length === 12) {
-      const data = generateProfile(cleanAadhaar);
-      setProfile(data);
-    } else {
-      setProfile(null);
-    }
+    setProfile(null);
   };
 
   const handleSubmit = async (e) => {
@@ -39,24 +32,40 @@ export default function Register() {
       return;
     }
 
+    // If profile already loaded, proceed to liveness
+    if (profile) {
+      navigate('/liveness');
+      return;
+    }
+
     setChecking(true);
     try {
       const res = await checkAadhaar(aadhaar);
       if (res?.data?.registered) {
-        setError(`This Aadhaar is already registered. Your EPIC ID is: ${res.data.epic_id}`);
+        // User exists in DB — store real data and show profile
+        localStorage.setItem('tv_is_real_user', 'true');
+        localStorage.setItem('tv_real_epic', res.data.epic_id);
+        localStorage.setItem('tv_epic', res.data.epic_id);
+        if (res.data.voter_id) {
+          localStorage.setItem('tv_voter_id', res.data.voter_id);
+        }
+        if (res.data.profile) {
+          localStorage.setItem('profile', JSON.stringify(res.data.profile));
+          setProfile(res.data.profile);
+        }
+        localStorage.setItem('tv_aadhaar', aadhaar);
+      } else {
+        // User NOT in DB — block
+        setError('User not registered. Please register first.');
         setChecking(false);
         return;
       }
     } catch (err) {
-      // If API is down, allow through (fallback graceful)
+      setError(err?.response?.data?.error || 'Unable to verify Aadhaar. Please try again.');
+      setChecking(false);
+      return;
     }
     setChecking(false);
-
-    localStorage.setItem('tv_aadhaar', aadhaar);
-    if (profile) {
-      localStorage.setItem('profile', JSON.stringify(profile));
-    }
-    navigate('/otp');
   };
 
   return (
@@ -65,8 +74,8 @@ export default function Register() {
         <RegistrationStepBar current="aadhaar" />
 
         <p className="text-sm text-gray-300 mb-1">Secure Identity Verification</p>
-        <h2 className="text-lg font-semibold text-white mb-3">Aadhaar Verification</h2>
-        <p className="text-gray-300 text-sm">Enter your 12-digit Aadhaar to begin registration.</p>
+        <h2 className="text-lg font-semibold text-white mb-3">Generate EPIC ID</h2>
+        <p className="text-gray-300 text-sm">Enter your 12-digit Aadhaar to generate your EPIC ID.</p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <input
@@ -79,20 +88,13 @@ export default function Register() {
 
           {profile && (
             <div className="bg-white/5 border border-white/10 backdrop-blur-md rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition duration-300 p-4 mt-4">
-              <img src={profile.avatar} className="w-20 h-20 rounded-full mx-auto mb-2" />
-
+              {profile.profile_image && (
+                <img src={profile.profile_image} className="w-20 h-20 rounded-full mx-auto mb-3 object-cover" alt="Profile" />
+              )}
               <p className="text-gray-200">Name: {profile.name}</p>
               <p className="text-gray-200">Gender: {profile.gender}</p>
               <p className="text-gray-200">DOB: {profile.dob}</p>
               <p className="text-gray-200">State: {profile.state}</p>
-              <p className="text-gray-200">Aadhaar: {profile.aadhaar_masked}</p>
-              <p className="mt-2 flex items-center gap-2 text-orange-300 font-medium">
-                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="7" y="2" width="10" height="20" rx="2" />
-                  <line x1="11" y1="18" x2="13" y2="18" />
-                </svg>
-                Registered Mobile: {profile.phone_masked}
-              </p>
             </div>
           )}
 
@@ -105,8 +107,10 @@ export default function Register() {
             type="submit"
             disabled={checking}
           >
-            {checking ? 'Checking...' : 'Continue'}
+            {checking ? 'Checking...' : profile ? 'Proceed to Face Verification →' : 'Verify Aadhaar'}
           </button>
+
+
         </form>
       </div>
     </div>

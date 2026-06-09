@@ -53,3 +53,44 @@ def verify_chain() -> bool:
         if recalculated != blocks[i].block_hash:
             return False
     return True
+
+
+def verify_chain_detailed() -> dict:
+    """
+    Recompute every block hash and report which blocks have been tampered with.
+
+    Returns:
+        {
+            "valid": bool,
+            "total_blocks": int,
+            "tampered_count": int,
+            "tampered_blocks": [
+                {"index": int, "block_id": int, "stored_hash": str, "expected_hash": str, "timestamp": str},
+                ...
+            ]
+        }
+    """
+    blocks = Block.query.order_by(Block.id).all()
+    tampered = []
+    for i in range(1, len(blocks)):
+        expected = sha256(
+            blocks[i - 1].block_hash
+            + blocks[i].data_hash
+            + blocks[i].hash_timestamp
+        )
+        if expected != blocks[i].block_hash:
+            tampered.append(
+                {
+                    "index": i,
+                    "block_id": blocks[i].id,
+                    "stored_hash": blocks[i].block_hash,
+                    "expected_hash": expected,
+                    "timestamp": blocks[i].hash_timestamp,
+                }
+            )
+    return {
+        "valid": len(tampered) == 0,
+        "total_blocks": len(blocks),
+        "tampered_count": len(tampered),
+        "tampered_blocks": tampered,
+    }

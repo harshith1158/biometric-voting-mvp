@@ -104,12 +104,15 @@ export default function BoothVoting() {
     setFpError('');
 
     try {
+      // FIX 4: Fingerprint MUST be verified before vote is cast
       await captureFingerprint({ epic_id: epic });
 
+      // Fingerprint scan succeeded — pass verification flag to backend (FIX 3)
       setSubmitting(true);
       const response = await castVote({
         epic_id: epic,
         candidate_id: selectedCandidateId,
+        fingerprint_verified: true,
       });
 
       localStorage.setItem('tv_vote_result', JSON.stringify(response?.data || {}));

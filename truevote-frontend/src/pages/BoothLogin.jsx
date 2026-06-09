@@ -21,9 +21,12 @@ export default function BoothLogin() {
     setChecking(true);
 
     try {
-      await voterLookup(trimmed);
-      // Valid EPIC — proceed
+      const res = await voterLookup(trimmed);
+      // Valid EPIC — store profile and proceed
       localStorage.setItem('tv_epic', trimmed);
+      if (res?.data?.profile) {
+        localStorage.setItem('profile', JSON.stringify(res.data.profile));
+      }
       localStorage.removeItem('tv_verified');
       localStorage.removeItem('tv_vote_result');
       navigate('/verify');

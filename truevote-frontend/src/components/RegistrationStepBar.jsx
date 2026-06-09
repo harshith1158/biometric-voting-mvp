@@ -1,15 +1,13 @@
 const STEPS = [
   { key: 'aadhaar', label: 'Aadhaar' },
-  { key: 'otp', label: 'OTP' },
-  { key: 'liveness', label: 'Liveness' },
+  { key: 'liveness', label: 'Face Verify' },
   { key: 'complete', label: 'Complete' },
 ];
 
 const ORDER = {
   aadhaar: 0,
-  otp: 1,
-  liveness: 2,
-  complete: 3,
+  liveness: 1,
+  complete: 2,
 };
 
 export default function RegistrationStepBar({ current = 'aadhaar' }) {

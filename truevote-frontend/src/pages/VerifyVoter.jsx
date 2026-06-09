@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getMyFingerprintImage } from '../services/api';
 
 export default function VerifyVoter() {
   const navigate = useNavigate();
   const [verified, setVerified] = useState(false);
+  const [fingerprintImage, setFingerprintImage] = useState('');
   const epic = localStorage.getItem('tv_epic') || 'N/A';
 
   const profile = useMemo(() => {
@@ -19,6 +21,19 @@ export default function VerifyVoter() {
 
     return null;
   }, []);
+
+  useEffect(() => {
+    if (!epic || epic === 'N/A') return;
+
+    getMyFingerprintImage(epic)
+      .then((res) => {
+        const assigned = String(res?.data?.image || '').trim();
+        setFingerprintImage(assigned);
+      })
+      .catch(() => {
+        setFingerprintImage('');
+      });
+  }, [epic]);
 
   if (!profile) {
     return (
@@ -38,7 +53,11 @@ export default function VerifyVoter() {
     <div className="text-center mt-10 px-4 transition-opacity duration-500 opacity-100 ease-in-out">
       <div className="bg-white/5 border border-white/10 backdrop-blur-md shadow-lg hover:shadow-xl transition duration-300 p-6 rounded-xl max-w-md mx-auto">
         <p className="text-sm text-gray-300 mb-2">Identity Confirmation at Booth</p>
-        <img src={profile.avatar} className="w-24 h-24 rounded-full mx-auto" />
+        {profile.profile_image ? (
+          <img src={profile.profile_image} className="w-24 h-24 rounded-full mx-auto object-cover" alt="Profile" />
+        ) : (
+          <div className="w-24 h-24 rounded-full mx-auto bg-white/10 flex items-center justify-center text-3xl text-gray-400">👤</div>
+        )}
 
         <h2 className="text-xl font-bold mt-2 text-white">{profile.name}</h2>
 
@@ -50,10 +69,13 @@ export default function VerifyVoter() {
           <p className="text-gray-300 text-sm"><span className="text-gray-400">EPIC ID:</span> <span className="font-mono text-white">{epic}</span></p>
         </div>
 
-        {/* Inline fingerprint verified badge */}
+        {/* Inline fingerprint verified badge with unique file */}
         <div className="mt-4 p-4 bg-green-900/30 border border-green-500/40 rounded-xl text-green-300 text-sm text-left shadow-[0_0_15px_rgba(0,255,100,0.2)]">
           <p className="font-semibold text-base mb-1">✓ Fingerprint Verified</p>
-          <p className="text-green-100"><span className="font-semibold text-white">{profile.name}</span>'s fingerprint has been recognized and verified using biometric fingerprint datasets!</p>
+          <p className="text-green-100">
+            <span className="font-semibold text-white">{profile.name}</span>'s fingerprint has been recognized and verified using biometric fingerprint datasets!
+            {fingerprintImage ? ` (${fingerprintImage})` : (profile.fingerprint_id ? ` (${profile.fingerprint_id})` : '')}
+          </p>
         </div>
 
         <button

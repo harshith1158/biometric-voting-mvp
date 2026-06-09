@@ -33,7 +33,7 @@ export default function Home() {
 
       <div className="mt-10 flex flex-col gap-4 w-full max-w-sm">
 
-        {/* ── REGISTER BUTTON — image card, bottom-left on desktop ── */}
+        {/* ── GENERATE EPIC ID BUTTON — image card, bottom-left on desktop ── */}
         <div
           onClick={() => { playClickSound(); navigate('/register'); }}
           className="group relative w-full h-24 rounded-xl overflow-hidden cursor-pointer
@@ -53,8 +53,8 @@ export default function Home() {
           <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/20" />
           {/* Label */}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-            <span className="text-white font-bold text-sm tracking-wide drop-shadow">Register to Vote</span>
-            <span className="text-orange-100 text-[10px] tracking-widest uppercase">New Voter →</span>
+            <span className="text-white font-bold text-sm tracking-wide drop-shadow">Generate EPIC ID</span>
+            <span className="text-orange-100 text-[10px] tracking-widest uppercase">Get Your ID →</span>
           </div>
           {/* Bottom accent bar */}
           <div className="absolute bottom-0 inset-x-0 h-[3px] bg-gradient-to-r from-orange-300 via-white to-orange-300 opacity-60 group-hover:opacity-100 transition" />
@@ -87,6 +87,14 @@ export default function Home() {
           <div className="absolute bottom-0 inset-x-0 h-[3px] bg-gradient-to-r from-green-300 via-white to-green-300 opacity-60 group-hover:opacity-100 transition" />
         </div>
 
+        {/* ── NEW USER REGISTRATION LINK ── */}
+        <p
+          onClick={() => { playClickSound(); navigate('/real-register'); }}
+          className="text-base text-gray-300 hover:text-white cursor-pointer transition-colors duration-200 text-center underline underline-offset-4 z-20 md:absolute md:top-[68%] md:left-1/2 md:-translate-x-1/2"
+        >
+          New User? Register
+        </p>
+
         {/* ── ADMIN BUTTON — image card, bottom-center on desktop ── */}
         <div
           onClick={() => { playClickSound(); navigate('/admin-login'); }}
@@ -114,6 +122,7 @@ export default function Home() {
           <div className="absolute bottom-0 inset-x-0 h-[3px] bg-gradient-to-r from-blue-300 via-white to-blue-300 opacity-60 group-hover:opacity-100 transition" />
         </div>
       </div>
+
     </div>
   );
 }

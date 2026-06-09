@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import RegistrationStepBar from '../components/RegistrationStepBar';
 
@@ -6,6 +6,12 @@ export default function Success() {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const epic = localStorage.getItem('tv_epic') || 'N/A';
+
+  useEffect(() => {
+    // Clean up real user flags after EPIC generation
+    localStorage.removeItem('tv_is_real_user');
+    localStorage.removeItem('tv_real_epic');
+  }, []);
 
   const handleCopy = async () => {
     try {
@@ -24,10 +30,10 @@ export default function Success() {
       </div>
 
       <div className="bg-white/5 border border-white/10 backdrop-blur-md shadow-lg hover:shadow-xl transition duration-300 p-6 rounded-xl max-w-md mx-auto hover:scale-[1.02]">
-        <p className="text-sm text-gray-300 mb-2">Enrollment Completed Successfully</p>
+        <p className="text-sm text-gray-300 mb-2">EPIC ID Generated Successfully</p>
         <div className="text-green-600 text-6xl animate-pulse">✔</div>
 
-        <h2 className="text-xl font-bold text-white mt-3">Registration Successful</h2>
+        <h2 className="text-xl font-bold text-white mt-3">EPIC ID Generated</h2>
 
         <div className="bg-white/10 text-gray-100 p-3 rounded mt-2 font-mono text-lg max-w-md mx-auto">{epic}</div>
 

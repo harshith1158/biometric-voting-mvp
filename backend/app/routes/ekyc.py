@@ -1,11 +1,30 @@
+import re
 from flask import Blueprint, request, jsonify
 from app.services.ekyc_service import validate_aadhaar, hash_aadhaar, generate_ekyc_data, generate_epic_deterministic
 from app.db import db
 from app.models import Voter
+from app.services.election_guard import is_election_open
 from datetime import datetime
 import json
+import logging
+
+
+def _validate_full_name(name: str) -> tuple:
+    """
+    Validate name: letters and spaces only, first + last name required.
+    Returns (is_valid: bool, error_message: str)
+    """
+    if not name or len(name.strip()) < 2:
+        return False, "Name is required"
+    if not re.match(r'^[A-Za-z\s]+$', name):
+        return False, "Name must contain only letters and spaces — no numbers or special characters"
+    words = [w for w in name.split() if w]
+    if len(words) < 2:
+        return False, "Full name is required — please provide both first name and last name"
+    return True, ""
 
 bp = Blueprint("ekyc", __name__, url_prefix="/api")
+logger = logging.getLogger(__name__)
 
 
 @bp.route("/ekyc", methods=["POST"])
@@ -78,6 +97,10 @@ def ekyc_verification():
     aadhaar_hash = hash_aadhaar(aadhaar)
     existing = Voter.query.filter_by(aadhaar_hash=aadhaar_hash).first()
 
+    # SECURITY FIX 2: Block re-entry after voting
+    if existing and existing.has_voted:
+        return jsonify({"error": "You have already voted. Access denied."}), 403
+
     if existing and existing.profile_data:
         try:
             ekyc_data = json.loads(existing.profile_data)
@@ -89,6 +112,21 @@ def ekyc_verification():
                 }), 200
         except (TypeError, json.JSONDecodeError):
             pass
+
+    # For real users without profile_data, build from DB fields
+    if existing and existing.is_real_user:
+        ekyc_data = {
+            "name": existing.name or "",
+            "gender": existing.gender or "",
+            "dob": str(existing.dob) if existing.dob else "",
+            "state": existing.address or "",
+            "phone": existing.phone or "",
+        }
+        return jsonify({
+            "status": "verified",
+            "aadhaar_hash": aadhaar_hash,
+            "data": ekyc_data
+        }), 200
 
     ekyc_data = generate_ekyc_data(aadhaar)
 
@@ -164,30 +202,61 @@ def register_voter():
     if not data or not all(field in data for field in required_fields):
         return jsonify({"error": "Missing required fields"}), 400
 
+    # Election guard — block new registrations when election is closed
+    if not is_election_open():
+        logger.warning("[REGISTER_VOTER] Blocked — election is closed")
+        return jsonify({"error": "Election is closed. New registrations are not permitted."}), 403
+
+    # Validate name — letters only, first + last name required
+    name = str(data.get("name", "")).strip()
+    name_valid, name_error = _validate_full_name(name)
+    if not name_valid:
+        return jsonify({"error": name_error}), 400
+
+    # Validate phone format
+    phone = str(data.get("phone", "")).strip()
+    if not phone.isdigit() or len(phone) != 10:
+        return jsonify({"error": "Invalid phone number. Must be 10 digits"}), 400
+
     print("Checking Aadhaar uniqueness")
     existing = Voter.query.filter_by(aadhaar_hash=data["aadhaar_hash"]).first()
+    # SECURITY FIX 3: Enforce unique Aadhaar - reject duplicates
     if existing:
-      print("Duplicate Aadhaar attempt:", data["aadhaar_hash"])
-      return jsonify({
-        "error": "Aadhaar already registered",
-        "epic_id": existing.epic_id,
-        "voter_id": str(existing.id),
-        "status": "existing"
-      }), 400
+        logger.warning(f"[REGISTER_VOTER] Duplicate Aadhaar attempt: {data['aadhaar_hash']}")
+        return jsonify({
+            "error": "Aadhaar already registered",
+            "epic_id": existing.epic_id,
+            "voter_id": str(existing.id),
+            "status": "existing"
+        }), 400
 
+    # Check for duplicate phone number
+    existing_phone = Voter.query.filter_by(phone=phone).first()
+    if existing_phone:
+        logger.warning(f"[REGISTER_VOTER] Duplicate phone attempt: {phone[:6]}***")
+        return jsonify({"error": "This mobile number is already registered with another voter"}), 400
+
+    # Validate DOB format and enforce age >= 18
     try:
         dob = datetime.strptime(data["dob"], "%Y-%m-%d").date()
     except ValueError:
-        return jsonify({"error": "Invalid DOB format"}), 400
+        return jsonify({"error": "Invalid DOB format. Use YYYY-MM-DD"}), 400
+
+    today = datetime.utcnow().date()
+    if dob >= today:
+        return jsonify({"error": "Date of birth cannot be in the future"}), 400
+    age = (today - dob).days // 365
+    if age < 18:
+        return jsonify({"error": "Voter must be at least 18 years old"}), 400
 
     # Create voter with temporary EPIC (will be regenerated)
     voter = Voter(
         aadhaar_hash=data["aadhaar_hash"],
-        name=data["name"],
+        name=name,
         dob=dob,
         gender=data["gender"],
         address=data["address"],
-        phone=data["phone"],
+        phone=phone,
         epic_id="TEMP"  # Temporary, will be replaced after getting voter ID
     )
 

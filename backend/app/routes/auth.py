@@ -3,6 +3,7 @@ import hashlib
 from flask import Blueprint, request, jsonify
 from app.services import otp_service
 from app.services.ekyc_service import generate_ekyc_data
+from app.services.attempt_tracker import is_locked, get_lockout_remaining, record_failure, reset_attempts
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -131,18 +132,48 @@ def verify_otp():
         if not validate_aadhaar(aadhaar):
             return jsonify({"error": "Invalid aadhaar format. Must be 12 digits."}), 400
 
+        session_key = hashlib.sha256(aadhaar.encode()).hexdigest()
+
+        # Lockout check
+        if is_locked(session_key, "otp"):
+            remaining = get_lockout_remaining(session_key, "otp")
+            return jsonify({"error": f"Too many failed OTP attempts. Please wait {remaining} seconds."}), 429
+
         # Deterministic OTP: same formula as request-otp, so no in-memory store needed
         seed = int(aadhaar[-6:])
         expected_otp = str(100000 + (seed % 900000))
 
         if otp != expected_otp:
-            return jsonify({"error": "Invalid OTP"}), 400
+            result = record_failure(session_key, "otp")
+            msg = "Invalid OTP"
+            if result["locked"]:
+                msg = f"Too many failed attempts. Locked for 15 minutes."
+            elif result["remaining_attempts"] > 0:
+                msg = f"Invalid OTP. {result['remaining_attempts']} attempt(s) remaining."
+            return jsonify({"error": msg, "verified": False}), 400
 
+        reset_attempts(session_key, "otp")
         return jsonify({"verified": True}), 200
 
     if not phone or not validate_phone(phone):
-      return jsonify({"error": "Invalid phone format."}), 400
+        return jsonify({"error": "Invalid phone format."}), 400
+
+    session_key = hashlib.sha256(phone.encode()).hexdigest()
+
+    # Lockout check
+    if is_locked(session_key, "otp"):
+        remaining = get_lockout_remaining(session_key, "otp")
+        return jsonify({"error": f"Too many failed OTP attempts. Please wait {remaining} seconds."}), 429
 
     verified, _ = otp_service.verify_otp(phone, otp)
+    if not verified:
+        result = record_failure(session_key, "otp")
+        msg = "Invalid or expired OTP"
+        if result["locked"]:
+            msg = "Too many failed attempts. Locked for 15 minutes."
+        elif result["remaining_attempts"] > 0:
+            msg = f"Invalid OTP. {result['remaining_attempts']} attempt(s) remaining."
+        return jsonify({"verified": False, "error": msg}), 400
 
+    reset_attempts(session_key, "otp")
     return jsonify({"verified": verified}), 200

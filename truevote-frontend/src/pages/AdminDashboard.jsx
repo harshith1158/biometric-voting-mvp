@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   getCandidates,
   getChainStatus,
-  getTamperAlertsCount,
 } from '../services/api';
 import API from '../services/api';
 import {
@@ -37,10 +36,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [apiConnected, setApiConnected] = useState(null);
-  const [tamperAttempts, setTamperAttempts] = useState(0);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
   const [declaring, setDeclaring] = useState(false);
+
+  console.log('[AdminDashboard] Mounted, current state:', { loading, candidates: candidates.length, error });
+
   const fetchData = async (isInitial = false) => {
     if (isInitial) {
       setLoading(true);
@@ -50,6 +51,7 @@ export default function AdminDashboard() {
     setError('');
 
     try {
+      console.log('[AdminDashboard] Fetching data...');
       const [candidateResponse, chainResponse] = await Promise.all([
         getCandidates(),
         getChainStatus(),
@@ -60,12 +62,13 @@ export default function AdminDashboard() {
         ? candidatePayload
         : candidatePayload?.candidates ?? [];
 
+      console.log('[AdminDashboard] Data fetched:', { candidates: normalizedCandidates.length, chain: chainResponse?.data });
       setCandidates(normalizedCandidates);
       setChainStatus(chainResponse?.data ?? null);
-      setTamperAttempts(getTamperAlertsCount());
       setApiConnected(true);
       setLastUpdated(new Date());
     } catch (requestError) {
+      console.error('[AdminDashboard] Fetch error:', requestError);
       setApiConnected(false);
       setError(requestError?.response?.data?.error || 'Failed to load admin dashboard.');
     } finally {
@@ -106,8 +109,6 @@ export default function AdminDashboard() {
   const chainLength = Number(chainStatus?.length ?? 0);
   const chainValid = Boolean(chainStatus?.valid);
   const votingClosed = Boolean(chainStatus?.voting_closed ?? chainStatus?.closed ?? false);
-  const isLocked = votingClosed || totalVotes > 0;
-  const tamperCount = tamperAttempts;
   const topCandidate = useMemo(() => {
     const normalizedCandidates = candidates.map((candidate) => ({
       ...candidate,
@@ -136,6 +137,11 @@ export default function AdminDashboard() {
   return (
     <div className="px-4 py-10 transition-opacity duration-500 opacity-100 ease-in-out">
       <div className="mx-auto max-w-6xl">
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 px-4 py-3">
+            <strong>Error:</strong> {error}
+          </div>
+        )}
         <div className="rounded-[2rem] bg-white/5 border border-white/10 backdrop-blur-md shadow-lg hover:shadow-xl transition duration-300 p-6 md:p-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -223,22 +229,17 @@ export default function AdminDashboard() {
           <div className="p-6 rounded-xl text-center shadow-lg bg-gradient-to-r from-green-600/20 to-green-400/10 animate-pulse hover:shadow-xl transition duration-300 ease-in-out mt-6">
             <h2 className="text-lg text-gray-300">🏆 Leading Candidate</h2>
             <p className="text-2xl font-bold text-green-400 mt-2">{topCandidate}</p>
-            {isLocked && (
+            {votingClosed && (
               <div className="text-xs text-red-400 text-center mt-2">
                 🔒 Result Locked
               </div>
             )}
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3 space-y-4 md:space-y-0">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 space-y-4 md:space-y-0">
             <div className="p-4 bg-white/5 border border-white/10 backdrop-blur-md shadow-lg rounded-xl text-center transition-all duration-300 hover:scale-105">
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-300">Total Votes</p>
               <p className="mt-3 text-3xl font-bold text-white">{loading ? '--' : totalVotes}</p>
-            </div>
-
-            <div className="p-4 bg-white/5 border border-white/10 rounded-xl text-center shadow-lg hover:shadow-xl transition duration-300 ease-in-out">
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-300">Tamper Attempts</p>
-              <p className="text-xl font-bold text-amber-200">{loading ? '--' : tamperCount}</p>
             </div>
 
             <div className="p-4 bg-white/5 border border-white/10 backdrop-blur-md shadow-lg rounded-xl text-center transition-all duration-300 hover:scale-105">

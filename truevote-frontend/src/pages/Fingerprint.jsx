@@ -143,7 +143,9 @@ export default function Fingerprint() {
                 : 'border-red-400/40 bg-red-400/10 text-red-200'
             }`}>
               <p className="font-bold text-base mb-2">
-                {result.status === 'pass' ? 'âœ” Fingerprint ID Matched' : 'âœ– Identity Mismatch'}
+                {result.status === 'pass'
+                  ? `✓ Fingerprint Verified\n\n${epicId || "User"}'s fingerprint has been recognized and verified using biometric fingerprint datasets! (${result.fingerprint_id || result.selected})`
+                  : '✖ Identity Mismatch'}
               </p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs mb-2 font-mono">
                 <span className="text-gray-400">Selected ID</span>

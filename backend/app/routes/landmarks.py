@@ -147,11 +147,12 @@ def extract_eye_landmarks(bgr_image):
         
         raise RuntimeError(f"Face landmark extraction failed: {str(e)}")
     
-    # Extract eye landmarks from 468-point face mesh
-    # Left eye: indices 263, 362, 386, 374, 380, 381
-    # Right eye: indices 33, 160, 158, 133, 153, 144
-    left_eye_indices = [263, 362, 386, 374, 380, 381]
-    right_eye_indices = [33, 160, 158, 133, 153, 144]
+    # Extract eye landmarks in EAR-compatible order:
+    # p1 outer corner, p2 upper lid, p3 upper inner lid,
+    # p4 inner corner, p5 lower inner lid, p6 lower lid.
+    # These indices match the standard MediaPipe EAR mapping.
+    left_eye_indices = [33, 160, 158, 133, 153, 144]
+    right_eye_indices = [362, 385, 387, 263, 373, 380]
     
     left_eye = np.array([
         [landmarks[i].x * w, landmarks[i].y * h] for i in left_eye_indices

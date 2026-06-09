@@ -2,11 +2,15 @@ import hashlib
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 import logging
+import json
+import os
 from sqlalchemy import func
 from app.db import db
 from app.models import Voter, Vote, Candidate
 from app.services.vote_service import encrypt_vote
 from app.services.blockchain_service import create_block, get_chain_status
+from app.services.biometric_service import load_image_from_bytes, save_live_face, verify_identity_strict
+from app.services.election_guard import is_election_open
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("booth", __name__, url_prefix="/api")
@@ -26,6 +30,137 @@ def _get_or_create_nota_candidate():
   db.session.add(nota)
   db.session.flush()
   return nota
+
+
+@bp.route("/verify_face_before_vote", methods=["POST"])
+def verify_face_before_vote():
+    """
+    Verify voter's face BEFORE casting vote at booth using DeepFace.
+    
+    SECURITY: Must be called before /cast_vote to ensure identity.
+    Uses DeepFace.verify() for face comparison (different person → FAIL, same person → PASS).
+    """
+    logger.info("[BOOTH] /api/verify_face_before_vote POST request")
+    
+    try:
+        # Get EPIC ID from request
+        epic_id = request.form.get("epic_id")
+        if not epic_id:
+            logger.warning("[BOOTH] Missing epic_id")
+            return jsonify({"error": "epic_id required"}), 400
+        
+        # Get image frame from request
+        if "frame" not in request.files:
+            logger.warning("[BOOTH] No frame in request")
+            return jsonify({"error": "No frame uploaded"}), 400
+        
+        frame_file = request.files["frame"]
+        frame_bytes = frame_file.read()
+        
+        if len(frame_bytes) == 0:
+            logger.error("[BOOTH] Empty frame uploaded")
+            return jsonify({"error": "Empty frame"}), 400
+        
+        logger.info(f"[BOOTH] Verifying face for EPIC: {epic_id}")
+        
+        # Find voter by EPIC
+        voter = Voter.query.filter_by(epic_id=epic_id).first()
+        if not voter:
+            logger.warning(f"[BOOTH] Voter not found for EPIC: {epic_id}")
+            return jsonify({"error": "EPIC not found"}), 404
+        
+        # Check if voter already voted
+        if voter.has_voted:
+            logger.warning(f"[BOOTH] Access denied - voter {epic_id} already voted")
+            return jsonify({"error": "You have already voted. Access denied."}), 403
+        
+        # Get stored face image path from voter record
+        # (stored in face_embedding field as image path)
+        if not voter.face_embedding:
+            logger.error(f"[BOOTH] No stored face image for EPIC: {epic_id}")
+            return jsonify({"error": "Face not registered for this EPIC"}), 400
+        
+        stored_face_path = voter.face_embedding
+        
+        if not os.path.exists(stored_face_path):
+            logger.error(f"[BOOTH] Stored face image not found: {stored_face_path}")
+            return jsonify({"error": "Stored face image file missing"}), 500
+        
+        logger.info(f"[BOOTH] Loaded stored face image: {stored_face_path}")
+        print(f"[BOOTH] Registered face path: {stored_face_path}")
+        
+        # STRICT: Save live face with MANDATORY face detection
+        try:
+            frame_image = load_image_from_bytes(frame_bytes)
+            live_face_path = save_live_face(frame_image)
+            
+            if not live_face_path:
+                logger.error("[BOOTH] BLOCK: Could not save live face - STRICT face detection failed")
+                print(f"[BOOTH] BLOCKED: Live face not detected or multiple faces detected")
+                return jsonify({"error": "Face not detected in live capture - only 1 face allowed"}), 400
+            
+            logger.info(f"[BOOTH] Saved live face image: {live_face_path}")
+            print(f"[BOOTH] Saved live image: {live_face_path}")
+        except Exception as e:
+            logger.error(f"[BOOTH] Error saving live face: {str(e)}", exc_info=True)
+            print(f"[BOOTH] EXCEPTION saving live face: {str(e)}")
+            return jsonify({"error": "Could not process live frame"}), 400
+        
+        # STRICT: Identity verification using DeepFace with enforce_detection=True
+        try:
+            print(f"\n[BOOTH] {'='*80}")
+            print(f"[BOOTH] STRICT IDENTITY VERIFICATION")
+            result = verify_identity_strict(stored_face_path, live_face_path)
+            verified = result.get('verified', False)
+            distance = result.get('distance', 1.0)
+            error = result.get('error')
+            
+            logger.info(f"[BOOTH] Verification result: verified={verified}, distance={distance:.4f}")
+            
+            # STRICT: BLOCK if verification fails - NO EXCEPTIONS, NO FALLBACK
+            if not verified:
+                logger.error(f"[BOOTH] ✗ IDENTITY VERIFICATION BLOCKED")
+                if error:
+                    logger.error(f"[BOOTH] Error: {error}")
+                print(f"[BOOTH] ✗ IDENTITY MISMATCH - VOTE BLOCKED")
+                print(f"[BOOTH] {'='*80}\n")
+                return jsonify({
+                    "status": "fail",
+                    "error": "Identity verification failed. Different person detected.",
+                    "verified": False,
+                    "distance": round(distance, 4)
+                }), 400
+            
+            # Verification PASSED - Same person confirmed
+            logger.info(f"[BOOTH] ✓ Identity verified for EPIC {epic_id}")
+            print(f"[BOOTH] ✓ IDENTITY CONFIRMED - Same person, vote allowed")
+            print(f"[BOOTH] {'='*80}\n")
+            return jsonify({
+                "status": "pass",
+                "message": "Identity verified - you may cast your vote",
+                "verified": True,
+                "distance": round(distance, 4)
+            }), 200
+        
+        except Exception as e:
+            logger.error(f"[BOOTH] Verification exception: {type(e).__name__}: {str(e)}", exc_info=True)
+            print(f"[BOOTH] ✗ VERIFICATION EXCEPTION - VOTE BLOCKED: {str(e)}")
+            print(f"[BOOTH] {'='*80}\n")
+            return jsonify({"error": f"Identity verification failed: {str(e)}"}), 500
+        
+        finally:
+            # Clean up temporary live face image
+            if live_face_path and os.path.exists(live_face_path):
+                try:
+                    logger.debug(f"[BOOTH] Cleaning up live image: {live_face_path}")
+                    os.remove(live_face_path)
+                except Exception as cleanup_error:
+                    logger.warning(f"[BOOTH] Could not delete live image: {str(cleanup_error)}")
+    
+    except Exception as e:
+        logger.error(f"[BOOTH] Unexpected error: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Verification error: {str(e)}"}), 500
+
 
 
 @bp.route("/cast_vote", methods=["POST"])
@@ -97,7 +232,17 @@ def cast_vote():
     
     epic_id = data["epic_id"]
     raw_candidate_id = data["candidate_id"]
-    
+
+    # FIX 3: Block vote without fingerprint verification
+    if data.get("fingerprint_verified") is not True:
+        logger.warning(f"[CAST_VOTE] Vote attempt without fingerprint verification for EPIC: {epic_id}")
+        return jsonify({"error": "Fingerprint verification required"}), 403
+
+    # Election guard — block voting after election is declared closed
+    if not is_election_open():
+        logger.warning(f"[CAST_VOTE] Vote blocked — election is closed (EPIC: {epic_id})")
+        return jsonify({"error": "Election is closed. No votes can be cast."}), 403
+
     try:
         # 1. Validate EPIC exists in voter table
         voter = Voter.query.filter_by(epic_id=epic_id).first()
@@ -110,7 +255,7 @@ def cast_vote():
             logger.warning(f"Double vote attempt by voter {voter.id} with EPIC {epic_id}")
             return jsonify({"error": "Already voted"}), 400
         
-        # Double-check using Vote table as backup
+        # SECURITY FIX 4: Double-check using Vote table as backup
         existing_vote = Vote.query.filter_by(epic_id=epic_id).first()
         if existing_vote:
             logger.warning(f"Vote already recorded for EPIC {epic_id}")
@@ -163,7 +308,7 @@ def cast_vote():
         )
         db.session.add(vote)
         
-        # 7. Mark voter as voted
+        # SECURITY FIX 4: Mark voter as voted to enforce one vote per user
         voter.has_voted = True
         db.session.commit()
         
@@ -227,6 +372,13 @@ def voter_lookup():
         "valid": True,
         "name": voter.name,
         "epic_id": voter.epic_id,
+        "is_real_user": voter.is_real_user or False,
+        "profile": {
+            "name": voter.name or "",
+            "gender": voter.gender or "",
+            "state": voter.address or "",
+            "profile_image": voter.profile_image or "",
+        },
     }), 200
 
 
@@ -241,6 +393,21 @@ def check_aadhaar():
     aadhaar_hash = hashlib.sha256(aadhaar.encode()).hexdigest()
     existing = Voter.query.filter_by(aadhaar_hash=aadhaar_hash).first()
     if existing:
-        return jsonify({"registered": True, "epic_id": existing.epic_id}), 200
+        result = {
+            "registered": True,
+            "has_voted": existing.has_voted or False,
+            "epic_id": existing.epic_id,
+            "voter_id": str(existing.id),
+            "is_real_user": existing.is_real_user or False,
+            "profile": {
+                "name": existing.name or "",
+                "dob": str(existing.dob) if existing.dob else "",
+                "gender": existing.gender or "",
+                "state": existing.address or "",
+                "phone": existing.phone or "",
+                "profile_image": existing.profile_image or "",
+            },
+        }
+        return jsonify(result), 200
 
     return jsonify({"registered": False}), 200

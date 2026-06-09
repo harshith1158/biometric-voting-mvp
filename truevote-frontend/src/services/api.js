@@ -75,12 +75,13 @@ export const getEKYC = (aadhaar) => API.post('/ekyc', { aadhaar });
 // Register voter with eKYC
 export const registerVoterWithEKYC = (data) => API.post('/register_voter', data);
 
-// Liveness detection
+// Liveness detection — DeepFace pipeline takes ~20-25s (25 comparisons × 0.65s each)
 export const checkLiveness = (formData) => 
   API.post('/biometrics/selfie', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
+    timeout: 120000,
   });
 
 // Fingerprint capture must always come from live RD service.
@@ -113,5 +114,29 @@ export const checkAadhaar = (aadhaar) => API.post('/check_aadhaar', { aadhaar })
 
 // Validate EPIC ID at booth login
 export const voterLookup = (epic_id) => API.get(`/voter_lookup?epic_id=${encodeURIComponent(epic_id)}`);
+
+// Real User Registration APIs
+export const sendRealOtp = (data) => {
+  console.log('[API] sendRealOtp called with:', data);
+  return API.post('/send-otp', data).catch((err) => {
+    console.error('[API] sendRealOtp error:', err.response?.data || err.message);
+    throw err;
+  });
+};
+export const verifyRealOtp = (data) => {
+  console.log('[API] verifyRealOtp called with:', data);
+  return API.post('/verify-otp', data).catch((err) => {
+    console.error('[API] verifyRealOtp error:', err.response?.data || err.message);
+    throw err;
+  });
+};
+export const realRegister = (data) => API.post('/real-register', data);
+export const verifyFace = (data) => 
+  API.post('/face/verify', data, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    timeout: 120000,
+  });
 
 export default API;

@@ -1,9 +1,115 @@
-﻿import uuid
+﻿from flask import Blueprint, request, jsonify
+from app.models import Voter
+from app.db import db
+import hashlib
+import logging
+
+bp = Blueprint("register", __name__, url_prefix="/api")
+logger = logging.getLogger(__name__)
+
+
+def hash_field(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+@bp.route("/register", methods=["POST"])
+def register():
+    """
+    Look up an existing registered voter by Aadhaar.
+    Strict real-user mode: only returns data for users who registered via /api/real-register.
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            aadhaar:
+              type: string
+              example: "123456789012"
+            aadhar_number:
+              type: string
+              example: "123456789012"
+    responses:
+      200:
+        description: Existing voter found
+        schema:
+          type: object
+          properties:
+            epic_id:
+              type: string
+            voter_id:
+              type: string
+            status:
+              type: string
+      400:
+        description: User not registered or invalid input
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+    """
+    try:
+        data = request.json
+        if not data:
+            logger.error("[REGISTER] Empty request body")
+            return jsonify({"error": "Request body is required"}), 400
+
+        # Support both parameter names
+        aadhaar = data.get("aadhaar") or data.get("aadhar_number")
+
+        logger.info("[REGISTER] Lookup request for Aadhaar")
+
+        # Validate aadhaar
+        if not aadhaar:
+            logger.warning("[REGISTER] Missing Aadhaar number")
+            return jsonify({"error": "Aadhaar number is required"}), 400
+
+        # Validate aadhaar format (12 digits)
+        if not str(aadhaar).isdigit() or len(str(aadhaar)) != 12:
+            logger.warning("[REGISTER] Invalid Aadhaar format")
+            return jsonify({"error": "Invalid Aadhaar format. Must be 12 digits."}), 400
+
+        # DB lookup — the ONLY source of truth
+        aadhaar_hash = hash_field(aadhaar)
+        existing_voter = Voter.query.filter_by(aadhaar_hash=aadhaar_hash).first()
+
+        if not existing_voter:
+            logger.info("[REGISTER] User not found in DB")
+            return jsonify({"error": "User not registered. Please register first."}), 400
+
+        logger.info(f"[REGISTER] Found existing voter: {existing_voter.epic_id}")
+        
+        # SECURITY FIX 2: Block re-entry after voting
+        if existing_voter.has_voted:
+            logger.warning(f"[REGISTER] Access denied - voter {existing_voter.epic_id} already voted")
+            return jsonify({"error": "You have already voted. Access denied."}), 403
+        
+        return jsonify({
+            "epic_id": existing_voter.epic_id,
+            "voter_id": str(existing_voter.id),
+            "status": "existing",
+            "profile": {
+                "name": existing_voter.name or "",
+                "dob": str(existing_voter.dob) if existing_voter.dob else "",
+                "gender": existing_voter.gender or "",
+                "state": existing_voter.address or "",
+                "phone": existing_voter.phone or "",
+            },
+        }), 200
+
+    except Exception as e:
+        logger.error(f"[REGISTER] Error during lookup: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Lookup failed: {str(e)}"}), 500
+import uuid
 from flask import Blueprint, request, jsonify
 from app.models import Voter
 from app.db import db
 from app.services.hash_chain import append_block
 from app.services.ekyc_service import generate_ekyc_data
+from app.services.election_guard import is_election_open
 from datetime import datetime
 import hashlib
 import logging
@@ -97,12 +203,27 @@ def register():
         
         if existing_voter:
             logger.info(f"[REGISTER] Voter already exists with this Aadhaar: {existing_voter.epic_id}")
-            return jsonify({
+            response_data = {
                 "error": "Aadhaar already registered",
                 "epic_id": existing_voter.epic_id,
                 "voter_id": str(existing_voter.id),
-                "status": "existing"
-            }), 400
+                "status": "existing",
+                "is_real_user": existing_voter.is_real_user or False,
+            }
+            if existing_voter.is_real_user:
+                response_data["profile"] = {
+                    "name": existing_voter.name or "",
+                    "dob": str(existing_voter.dob) if existing_voter.dob else "",
+                    "gender": existing_voter.gender or "",
+                    "state": existing_voter.address or "",
+                    "phone": existing_voter.phone or "",
+                }
+            return jsonify(response_data), 400
+
+        # Election guard — block new registrations when election is closed
+        if not is_election_open():
+            logger.warning("[REGISTER] Blocked — election is closed, no new registrations allowed")
+            return jsonify({"error": "Election is closed. New registrations are not permitted."}), 403
 
         # Generate eKYC data deterministically from Aadhaar
         logger.info(f"[REGISTER] Generating eKYC data for Aadhaar")
