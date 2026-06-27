@@ -414,7 +414,7 @@ Developed as a Final Year Major Project for the Bachelor of Technology (B.Tech) 
 
 This project was developed for academic and research purposes to demonstrate the integration of biometric authentication, secure system design, and blockchain technology in electronic voting systems.
 
-Special thanks to our project supervisor, faculty members, and the Department of Computer Science & Engineering for their guidance and support throughout the development of this project.
+Special thanks to our project supervisor, faculty members, and the Department of Computer Engineering for their guidance and support throughout the development of this project.
 
 
 
