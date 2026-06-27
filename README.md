@@ -87,48 +87,63 @@ Blockchain entry is created
 Voting status is updated
 6. Admin Module
 
-The administrator can:
+## Administration Module
 
-Monitor election activity
-View registered voters
-Verify blockchain integrity
-Declare election results
-Close the election
-Project Workflow
-Home
- │
- ├── New User Registration
- │       │
- │       ├── Aadhaar Validation
- │       ├── Age Verification
- │       ├── Face Liveness
- │       ├── Face Enrollment
- │       └── Save User
- │
- ├── Generate EPIC ID
- │       │
- │       ├── Aadhaar Verification
- │       ├── Liveness Detection
- │       ├── Face Identity Verification
- │       └── Generate EPIC
- │
- ├── Booth Verification
- │       │
- │       ├── Retrieve Voter
- │       ├── Verify Eligibility
- │       └── Proceed to Voting
- │
- ├── Candidate Selection
- │       │
- │       ├── Fingerprint Verification
- │       ├── Record Vote
- │       └── Update Blockchain
- │
- └── Admin Dashboard
-         │
-         ├── Monitor Election
-         ├── Verify Blockchain
-         └── Declare Results
+The administrator is responsible for managing and monitoring the election process. The Admin Dashboard provides the following capabilities:
+
+* Monitor election activity in real time
+* View registered voters and voter statistics
+* Verify blockchain integrity to detect tampering
+* View votes and election analytics
+* Declare election results
+* Close the election to prevent further voting
+
+---
+
+## Project Workflow
+
+```text
+TRUE VOTE System
+│
+├── Home
+│   │
+│   ├── New User Registration
+│   │   ├── Aadhaar Validation
+│   │   ├── Age Verification (18+)
+│   │   ├── OTP Verification
+│   │   ├── Face Liveness Detection
+│   │   ├── Face Enrollment
+│   │   └── Save Voter Details
+│   │
+│   ├── Generate EPIC ID
+│   │   ├── Aadhaar Verification
+│   │   ├── Face Liveness Detection
+│   │   ├── Face Identity Verification
+│   │   └── Generate / Retrieve EPIC ID
+│   │
+│   ├── Booth Verification
+│   │   ├── Retrieve Voter Information
+│   │   ├── Verify Voting Eligibility
+│   │   └── Enter Voting Booth
+│   │
+│   ├── Candidate Selection
+│   │   ├── Fingerprint Authentication
+│   │   ├── Cast Vote
+│   │   ├── Update Voting Status
+│   │   └── Append Blockchain Record
+│   │
+│   └── Admin Dashboard
+│       ├── Monitor Election Activity
+│       ├── View Registered Voters
+│       ├── Verify Blockchain Integrity
+│       ├── Declare Election Results
+│       └── Close Election
+│
+└── End of Election
+    ├── Display Results
+    └── Prevent Further Voting
+```
+
 Technologies Used
 Frontend
 React.js
@@ -221,67 +236,143 @@ Blockchain verification
 Duplicate registration prevention
 Duplicate voting prevention
 
-Project Structure:
+## Project Structure
 
+```text
 TRUE-VOTE/
 │
 ├── backend/
-│   ├── routes/
-│   ├── services/
-│   ├── models/
-│   ├── utils/
+│   ├── routes/              # REST API endpoints
+│   ├── services/            # Business logic and AI services
+│   ├── models/              # Database models
+│   ├── utils/               # Utility functions
 │   ├── data/
-│   └── main.py
+│   │   ├── faces/           # Registered face samples
+│   │   └── fingerprints/    # Fingerprint templates (if applicable)
+│   ├── database/            # SQLite database
+│   ├── main.py              # Flask application entry point
+│   └── requirements.txt
 │
 ├── frontend/
+│   ├── public/
 │   ├── src/
-│   ├── components/
-│   ├── pages/
-│   └── assets/
-│
-├── database/
+│   │   ├── assets/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   ├── package.json
+│   └── vite.config.js
 │
 ├── docs/
-│
+├── LICENSE
 ├── README.md
-└── requirements.txt
+└── .gitignore
+```
 
-Installation
-Clone the repository:
+---
 
-git clone https://github.com/your-username/true-vote.git
+# Installation
+
+## Prerequisites
+
+Make sure the following software is installed:
+
+* Python 3.10 or later
+* Node.js 18 or later
+* npm
+* Git
+
+---
+
+## Clone the Repository
+
+```bash
+git clone https://github.com/<your-username>/true-vote.git
 cd true-vote
+```
 
-Backend Setup
+---
+
+## Backend Setup
+
+```bash
 cd backend
 
 python -m venv venv
+```
 
+### Activate Virtual Environment
+
+**Windows**
+
+```bash
 venv\Scripts\activate
+```
 
+**Linux / macOS**
+
+```bash
+source venv/bin/activate
+```
+
+### Install Dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
+### Start the Backend Server
+
+```bash
 python main.py
+```
 
-Frontend Setup
+---
+
+## Frontend Setup
+
+Open a new terminal.
+
+```bash
 cd frontend
 
 npm install
+```
 
+### Start the Frontend
+
+```bash
 npm run dev
+```
 
-Default URLs
+---
 
-Frontend:
-http://localhost:5173
+# Application URLs
 
-Backend:
-http://127.0.0.1:5000
+After both servers are running:
 
-Swagger Documentation:
-http://127.0.0.1:5000/docs
+| Service                   | URL                        |
+| ------------------------- | -------------------------- |
+| Frontend                  | http://localhost:5173      |
+| Backend API               | http://127.0.0.1:5000      |
+| Swagger API Documentation | http://127.0.0.1:5000/docs |
 
-Future Enhancements
+---
+
+# Running the Application
+
+1. Start the backend server.
+2. Start the frontend development server.
+3. Open **http://localhost:5173** in your browser.
+4. Register a new user or log in using an existing voter.
+5. Generate an EPIC ID.
+6. Verify identity and proceed to the voting workflow.
+
+
+Future Enhancements:
 Cloud deployment
 PostgreSQL database
 Real OTP gateway integration
