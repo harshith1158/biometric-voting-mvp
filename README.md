@@ -396,7 +396,7 @@ This project is licensed under the **MIT License**.
 
 You are free to use, modify, distribute, and build upon this project in accordance with the terms of the MIT License. See the `LICENSE` file in the root of this repository for the complete license text.
 
-© 2025 TRUE VOTE Project Contributors.
+© 2026 TRUE VOTE Project Contributors.
 
 ## Authors
 
